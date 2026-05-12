@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+aiomysql
+cryptography
+alembic
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+pydantic
+pydantic-settings
+pillow
+openpyxl
+pandas
+python-dotenv
+email-validator
+firebase-admin

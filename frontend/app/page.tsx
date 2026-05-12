@@ -1,5 +1,6 @@
 import { StockSummaryCards } from "@/components/dashboard/StockSummaryCards";
 import { StockTable } from "@/components/dashboard/StockTable";
+import { MapDashboard } from "@/components/dashboard/MapDashboard";
 
 export default function Home() {
   return (
@@ -18,6 +19,7 @@ export default function Home() {
         </div>
       </div>
       
+      <MapDashboard />
       <StockSummaryCards />
       <StockTable />
     </div>
