@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 import { ArrowLeft, PackageOpen, Camera } from "lucide-react";
 import Link from "next/link";
@@ -33,7 +33,6 @@ interface StockCalc {
 export default function GudangDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const router = useRouter();
 
   const [gudang, setGudang] = useState<GudangData | null>(null);
   const [stocks, setStocks] = useState<StockCalc[]>([]);
