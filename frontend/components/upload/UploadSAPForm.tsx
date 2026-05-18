@@ -34,6 +34,13 @@ export function UploadSAPForm() {
   const [zsdError, setZsdError] = useState<string | null>(null);
   const zsdRef = useRef<HTMLInputElement>(null);
 
+  // Master Gudang state
+  const [masterFile, setMasterFile] = useState<File | null>(null);
+  const [masterLoading, setMasterLoading] = useState(false);
+  const [masterResult, setMasterResult] = useState<{message: string, warehouses_count: number, plants_count: number} | null>(null);
+  const [masterError, setMasterError] = useState<string | null>(null);
+  const masterRef = useRef<HTMLInputElement>(null);
+
   const handleUpload = async (
     type: "mb52" | "zsd-sodo",
     file: File,
@@ -69,11 +76,41 @@ export function UploadSAPForm() {
   const handleDrop = (
     e: React.DragEvent,
     setFile: (f: File) => void,
+    acceptsCsv: boolean = false
   ) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (file && (file.name.endsWith(".xlsx") || file.name.endsWith(".xls"))) {
-      setFile(file);
+    if (file) {
+      if ((!acceptsCsv && (file.name.endsWith(".xlsx") || file.name.endsWith(".xls"))) ||
+          (acceptsCsv && file.name.endsWith(".csv"))) {
+        setFile(file);
+      }
+    }
+  };
+
+  const handleUploadMaster = async () => {
+    if (!masterFile) return;
+    setMasterLoading(true);
+    setMasterResult(null);
+    setMasterError(null);
+
+    const formData = new FormData();
+    formData.append("file", masterFile);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/master-data/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Upload gagal");
+      }
+      setMasterResult(data);
+    } catch (err: any) {
+      setMasterError(err.message || "Terjadi kesalahan saat mengupload file master.");
+    } finally {
+      setMasterLoading(false);
     }
   };
 
@@ -194,6 +231,65 @@ export function UploadSAPForm() {
 
         {zsdResult && <ResultBanner result={zsdResult} />}
         {zsdError && <ErrorBanner message={zsdError} />}
+      </div>
+
+      {/* Upload Master Gudang */}
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+        <h3 className="text-lg font-bold text-pupuk-darkBlue mb-1">Master Data Gudang</h3>
+        <p className="text-xs text-gray-500 mb-4">Upload file CSV (gdfix1505.csv) untuk memperbarui data gudang dan kode plant.</p>
+
+        <input
+          ref={masterRef}
+          type="file"
+          accept=".csv"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && setMasterFile(e.target.files[0])}
+        />
+
+        <div
+          onClick={() => masterRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => handleDrop(e, setMasterFile, true)}
+          className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer
+            ${masterFile ? "border-pupuk-turquoise bg-emerald-50" : "border-gray-300 hover:bg-gray-50 hover:border-gray-400"}`}
+        >
+          {masterFile ? (
+            <>
+              <FileSpreadsheet className="w-10 h-10 text-pupuk-turquoise mb-2" />
+              <p className="text-sm font-medium text-gray-800">{masterFile.name}</p>
+              <p className="text-xs text-gray-500 mt-1">{(masterFile.size / 1024).toFixed(1)} KB</p>
+            </>
+          ) : (
+            <>
+              <UploadCloud className="w-10 h-10 text-gray-400 mb-3" />
+              <p className="text-sm font-medium text-gray-700">Klik untuk upload atau drag & drop</p>
+              <p className="text-xs text-gray-400 mt-1">Format: .csv</p>
+            </>
+          )}
+        </div>
+
+        {masterFile && (
+          <button
+            onClick={handleUploadMaster}
+            disabled={masterLoading}
+            className="mt-4 bg-pupuk-darkBlue text-white px-6 py-2.5 rounded-md font-medium hover:bg-pupuk-darkBlue/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {masterLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+            {masterLoading ? "Memproses..." : "Upload Master Gudang"}
+          </button>
+        )}
+
+        {masterResult && (
+          <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-emerald-800">{masterResult.message}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {masterError && <ErrorBanner message={masterError} />}
       </div>
     </div>
   );

@@ -14,32 +14,38 @@ from sqlalchemy import func, delete
 from datetime import date
 from typing import List, Dict, Any
 
-from app.models.models import SAPStock, SAPOutstandingDO, StockCalculation
+from app.models.models import SAPStock, SAPOutstandingDO, StockCalculation, WarehousePlant
 
 
-def calculate_daily_stock(db: Session, tanggal: date, kode_plant: str, jenis_pupuk: str) -> Dict[str, Any]:
-    """Hitung stok untuk satu plant dan satu jenis pupuk pada tanggal tertentu."""
+def calculate_daily_stock(db: Session, tanggal: date, gudang_id: int, jenis_pupuk: str) -> Dict[str, Any]:
+    """Hitung stok untuk satu gudang dan satu jenis pupuk pada tanggal tertentu."""
     
     # Stok Fisik = total unrestricted dari MB52
-    fisik = db.query(func.coalesce(func.sum(SAPStock.unrestricted), 0.0)).filter(
+    fisik = db.query(func.coalesce(func.sum(SAPStock.unrestricted), 0.0)).join(
+        WarehousePlant, WarehousePlant.kode_plant == SAPStock.kode_plant
+    ).filter(
         SAPStock.tanggal == tanggal,
-        SAPStock.kode_plant == kode_plant,
+        WarehousePlant.gudang_id == gudang_id,
         SAPStock.jenis_pupuk == jenis_pupuk,
     ).scalar()
     fisik = float(fisik)
 
     # Outstanding SO = total outstanding dari ZSD_SODO
-    outstanding_so = db.query(func.coalesce(func.sum(SAPOutstandingDO.outstanding_qty), 0.0)).filter(
+    outstanding_so = db.query(func.coalesce(func.sum(SAPOutstandingDO.outstanding_qty), 0.0)).join(
+        WarehousePlant, WarehousePlant.kode_plant == SAPOutstandingDO.kode_plant
+    ).filter(
         SAPOutstandingDO.tanggal == tanggal,
-        SAPOutstandingDO.kode_plant == kode_plant,
+        WarehousePlant.gudang_id == gudang_id,
         SAPOutstandingDO.jenis_pupuk == jenis_pupuk,
     ).scalar()
     outstanding_so = float(outstanding_so)
 
     # Intransit = Stock in Transit dari MB52
-    intransit = db.query(func.coalesce(func.sum(SAPStock.intransit), 0.0)).filter(
+    intransit = db.query(func.coalesce(func.sum(SAPStock.intransit), 0.0)).join(
+        WarehousePlant, WarehousePlant.kode_plant == SAPStock.kode_plant
+    ).filter(
         SAPStock.tanggal == tanggal,
-        SAPStock.kode_plant == kode_plant,
+        WarehousePlant.gudang_id == gudang_id,
         SAPStock.jenis_pupuk == jenis_pupuk,
     ).scalar()
     intransit = float(intransit)
@@ -57,15 +63,15 @@ def calculate_daily_stock(db: Session, tanggal: date, kode_plant: str, jenis_pup
     }
 
 
-def update_stock_calculation(db: Session, tanggal: date, kode_plant: str, jenis_pupuk: str) -> StockCalculation:
+def update_stock_calculation(db: Session, tanggal: date, gudang_id: int, jenis_pupuk: str) -> StockCalculation:
     """Hitung dan simpan/update hasil kalkulasi stok ke database."""
     
-    calc_data = calculate_daily_stock(db, tanggal, kode_plant, jenis_pupuk)
+    calc_data = calculate_daily_stock(db, tanggal, gudang_id, jenis_pupuk)
 
     # Cek apakah sudah ada record
     record = db.query(StockCalculation).filter(
         StockCalculation.tanggal == tanggal,
-        StockCalculation.kode_plant == kode_plant,
+        StockCalculation.gudang_id == gudang_id,
         StockCalculation.tipe_pupuk == jenis_pupuk,
     ).first()
 
@@ -78,7 +84,7 @@ def update_stock_calculation(db: Session, tanggal: date, kode_plant: str, jenis_
     else:
         record = StockCalculation(
             tanggal=tanggal,
-            kode_plant=kode_plant,
+            gudang_id=gudang_id,
             tipe_pupuk=jenis_pupuk,
             **calc_data,
         )
@@ -91,15 +97,19 @@ def update_stock_calculation(db: Session, tanggal: date, kode_plant: str, jenis_
 
 def recalculate_all_for_date(db: Session, tanggal: date) -> List[Dict[str, Any]]:
     """
-    Hitung ulang stok untuk SEMUA plant dan jenis pupuk pada tanggal tertentu.
+    Hitung ulang stok untuk SEMUA gudang dan jenis pupuk pada tanggal tertentu.
     Dipanggil setelah upload file baru.
     """
-    # Cari semua kombinasi unik (kode_plant, jenis_pupuk) yang ada di data SAP hari itu
-    mb52_combos = db.query(SAPStock.kode_plant, SAPStock.jenis_pupuk).filter(
+    # Cari semua kombinasi unik (gudang_id, jenis_pupuk) yang ada di data SAP hari itu
+    mb52_combos = db.query(WarehousePlant.gudang_id, SAPStock.jenis_pupuk).join(
+        SAPStock, WarehousePlant.kode_plant == SAPStock.kode_plant
+    ).filter(
         SAPStock.tanggal == tanggal
     ).distinct().all()
     
-    do_combos = db.query(SAPOutstandingDO.kode_plant, SAPOutstandingDO.jenis_pupuk).filter(
+    do_combos = db.query(WarehousePlant.gudang_id, SAPOutstandingDO.jenis_pupuk).join(
+        SAPOutstandingDO, WarehousePlant.kode_plant == SAPOutstandingDO.kode_plant
+    ).filter(
         SAPOutstandingDO.tanggal == tanggal
     ).distinct().all()
     
@@ -111,10 +121,10 @@ def recalculate_all_for_date(db: Session, tanggal: date) -> List[Dict[str, Any]]
         combos.add((row[0], row[1]))
     
     results = []
-    for kode_plant, jenis_pupuk in combos:
-        record = update_stock_calculation(db, tanggal, kode_plant, jenis_pupuk)
+    for gudang_id, jenis_pupuk in combos:
+        record = update_stock_calculation(db, tanggal, gudang_id, jenis_pupuk)
         results.append({
-            "kode_plant": kode_plant,
+            "gudang_id": gudang_id,
             "tipe_pupuk": jenis_pupuk,
             "stok_fisik": record.stok_fisik,
             "outstanding_so": record.outstanding_so,

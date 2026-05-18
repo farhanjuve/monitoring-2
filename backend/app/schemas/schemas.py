@@ -32,7 +32,11 @@ class FcmTokenCreate(BaseModel):
 class StockCalculationOut(BaseModel):
     id: int
     tanggal: date
-    kode_plant: str
+    gudang_id: int
+    nama_gudang: Optional[str] = None
+    kode_plants: Optional[str] = None
+    kota: Optional[str] = None
+    provinsi: Optional[str] = None
     tipe_pupuk: str
     stok_fisik: float
     outstanding_so: float

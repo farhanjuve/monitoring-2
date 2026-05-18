@@ -9,6 +9,7 @@ Endpoints untuk:
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from datetime import date
 from typing import List, Optional
 
@@ -143,20 +144,25 @@ async def upload_zsd_sodo(
 def get_stocks(
     db: Session = Depends(get_db),
     tanggal: Optional[date] = None,
-    kode_plant: Optional[str] = None,
+    gudang_id: Optional[int] = None,
     tipe_pupuk: Optional[str] = None,
 ):
     """Ambil daftar hasil kalkulasi stok dengan filter opsional."""
     query = db.query(StockCalculation)
     
+    if not tanggal:
+        # Get the latest date available in the database
+        latest_date = db.query(func.max(StockCalculation.tanggal)).scalar()
+        tanggal = latest_date
+
     if tanggal:
         query = query.filter(StockCalculation.tanggal == tanggal)
-    if kode_plant:
-        query = query.filter(StockCalculation.kode_plant == kode_plant)
+    if gudang_id:
+        query = query.filter(StockCalculation.gudang_id == gudang_id)
     if tipe_pupuk:
         query = query.filter(StockCalculation.tipe_pupuk == tipe_pupuk)
     
-    query = query.order_by(StockCalculation.kode_plant, StockCalculation.tipe_pupuk)
+    query = query.order_by(StockCalculation.gudang_id, StockCalculation.tipe_pupuk)
     
     return query.all()
 
@@ -164,13 +170,13 @@ def get_stocks(
 @router.get("/preview", response_model=StockPreview)
 def preview_calculation(
     tanggal: date,
-    kode_plant: str,
+    gudang_id: int,
     tipe_pupuk: str,
     db: Session = Depends(get_db),
 ):
     """Preview hasil hitungan tanpa menyimpan ke database."""
     try:
-        calc_data = calculate_daily_stock(db, tanggal, kode_plant, tipe_pupuk)
+        calc_data = calculate_daily_stock(db, tanggal, gudang_id, tipe_pupuk)
         return calc_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -185,7 +191,7 @@ def recalculate_stocks(
     try:
         results = recalculate_all_for_date(db, tanggal)
         return {
-            "message": f"Berhasil menghitung ulang stok untuk {len(results)} kombinasi plant/pupuk.",
+            "message": f"Berhasil menghitung ulang stok untuk {len(results)} kombinasi gudang/pupuk.",
             "tanggal": tanggal.isoformat(),
             "calculations": results,
         }

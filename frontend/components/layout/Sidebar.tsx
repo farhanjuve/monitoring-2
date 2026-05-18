@@ -5,7 +5,6 @@ export function Sidebar() {
   const menus = [
     { name: "Dashboard", icon: LayoutDashboard, href: "/" },
     { name: "Upload Data SAP", icon: Upload, href: "/upload" },
-    { name: "Galeri CCTV", icon: Camera, href: "/cctv" },
     { name: "Log Aktivitas", icon: History, href: "/logs" },
   ];
 

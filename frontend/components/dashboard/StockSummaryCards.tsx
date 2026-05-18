@@ -27,8 +27,7 @@ export function StockSummaryCards() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    const today = new Date().toISOString().split("T")[0];
-    fetch(`${API_BASE_URL}/api/stocks/?tanggal=${today}`)
+    fetch(`${API_BASE_URL}/api/stocks/`)
       .then((res) => res.json())
       .then((data: StockCalc[]) => {
         const agg = data.reduce(

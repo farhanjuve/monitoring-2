@@ -5,23 +5,26 @@ from sqlalchemy.sql import func
 
 Base = declarative_base()
 
-class MasterPlant(Base):
-    __tablename__ = "master_plant"
+class Warehouse(Base):
+    __tablename__ = "warehouses"
     
     id = Column(Integer, primary_key=True, index=True)
-    kode_plant = Column(String(10), unique=True, index=True, nullable=False)
-    nama_gudang = Column(String(200))
-    anper = Column(String(10))
-    lini = Column(String(20))
-    kabupaten = Column(String(100))
+    nama_gudang = Column(String(200), index=True)
+    kota = Column(String(100))
     kode_kab = Column(Integer, index=True)
     provinsi = Column(String(100))
-    kapasitas_ton = Column(Float, nullable=True)
-    has_cctv = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
-    sharing_kode_plant = Column(String(10), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class WarehousePlant(Base):
+    __tablename__ = "warehouse_plants"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    gudang_id = Column(Integer, ForeignKey("warehouses.id", ondelete="CASCADE"), index=True, nullable=False)
+    kode_plant = Column(String(10), unique=True, index=True, nullable=False)
+    
+    warehouse = relationship("Warehouse", backref="plants")
 
 class SafetyStock(Base):
     __tablename__ = "safety_stock"
@@ -40,13 +43,13 @@ class SafetyStock(Base):
 
 class AreaGrouping(Base):
     __tablename__ = "area_grouping"
-    __table_args__ = (UniqueConstraint('kode_kab', 'kode_plant', name='uq_area_grouping_kab_plant'),)
+    __table_args__ = (UniqueConstraint('kode_kab', 'gudang_id', name='uq_area_grouping_kab_gudang'),)
     
     id = Column(Integer, primary_key=True, index=True)
     kode_kab = Column(Integer, index=True, nullable=False)
     kabupaten = Column(String(100))
     provinsi = Column(String(100))
-    kode_plant = Column(String(10), ForeignKey("master_plant.kode_plant"), index=True, nullable=False)
+    gudang_id = Column(Integer, ForeignKey("warehouses.id"), index=True, nullable=False)
     is_configured = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -92,11 +95,11 @@ class SAPUpload(Base):
 
 class StockCalculation(Base):
     __tablename__ = "stock_calculations"
-    __table_args__ = (UniqueConstraint('tanggal', 'kode_plant', 'tipe_pupuk', name='uq_stock_calc_tanggal_plant_tipe'),)
+    __table_args__ = (UniqueConstraint('tanggal', 'gudang_id', 'tipe_pupuk', name='uq_stock_calc_tanggal_gudang_tipe'),)
     
     id = Column(Integer, primary_key=True, index=True)
     tanggal = Column(Date, index=True, nullable=False)
-    kode_plant = Column(String(10), index=True, nullable=False)
+    gudang_id = Column(Integer, ForeignKey("warehouses.id"), index=True, nullable=False)
     tipe_pupuk = Column(String(20), index=True, nullable=False)
     stok_fisik = Column(Float, default=0.0)
     outstanding_so = Column(Float, default=0.0)
@@ -104,15 +107,34 @@ class StockCalculation(Base):
     intransit = Column(Float, default=0.0)
     stok_admin = Column(Float, default=0.0)
     calculated_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    warehouse = relationship("Warehouse", backref="stock_calculations")
+
+    @property
+    def nama_gudang(self):
+        return self.warehouse.nama_gudang if self.warehouse else None
+
+    @property
+    def kota(self):
+        return self.warehouse.kota if self.warehouse else None
+
+    @property
+    def provinsi(self):
+        return self.warehouse.provinsi if self.warehouse else None
+
+    @property
+    def kode_plants(self):
+        if self.warehouse and self.warehouse.plants:
+            return "/".join(sorted([p.kode_plant for p in self.warehouse.plants]))
+        return ""
 
 class Photo(Base):
     __tablename__ = "photos"
-    __table_args__ = (Index('ix_photos_tanggal_plant', 'tanggal', 'kode_plant'),)
+    __table_args__ = (Index('ix_photos_tanggal_gudang', 'tanggal', 'gudang_id'),)
     
     id = Column(Integer, primary_key=True, index=True)
     tanggal = Column(Date, index=True, nullable=False)
-    kode_plant = Column(String(10), index=True, nullable=False)
-    kode_plant2 = Column(String(10), nullable=True)
+    gudang_id = Column(Integer, ForeignKey("warehouses.id"), index=True, nullable=False)
     filename = Column(String(200), nullable=False)
     r2_key = Column(String(300), nullable=False)
     r2_url = Column(Text, nullable=False)

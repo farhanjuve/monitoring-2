@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import auth, stocks
+from app.api.routes import auth, stocks, master_data
 
 app = FastAPI(title="Pupuk Monitor API")
 
@@ -18,3 +18,4 @@ def read_root():
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(stocks.router, prefix="/api/stocks", tags=["Stocks"])
+app.include_router(master_data.router, prefix="/api/master-data", tags=["Master Data"])
