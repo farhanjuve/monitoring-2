@@ -79,6 +79,20 @@ async def upload_master_gudang(
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Gagal memproses file CSV: {str(e)}")
 
+@router.get("/gudang")
+def get_all_gudang(db: Session = Depends(get_db)):
+    """Ambil semua data gudang untuk dropdown/pilihan."""
+    gudangs = db.query(Warehouse).order_by(Warehouse.nama_gudang).all()
+    return [
+        {
+            "id": g.id, 
+            "nama_gudang": g.nama_gudang, 
+            "kota": g.kota,
+            "kode_plants": [p.kode_plant for p in g.plants]
+        } 
+        for g in gudangs
+    ]
+
 @router.get("/gudang/{gudang_id}")
 def get_gudang(gudang_id: int, db: Session = Depends(get_db)):
     """Ambil data gudang berdasarkan ID."""

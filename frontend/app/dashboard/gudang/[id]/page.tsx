@@ -14,6 +14,14 @@ interface GudangData {
   kode_plants: string[];
 }
 
+interface PhotoData {
+  id: number;
+  tanggal: string;
+  waktu_jepret: string;
+  kamera_id: string;
+  url: string;
+}
+
 interface StockCalc {
   id: number;
   tanggal: string;
@@ -37,6 +45,7 @@ export default function GudangDetailPage() {
 
   const [gudang, setGudang] = useState<GudangData | null>(null);
   const [stocks, setStocks] = useState<StockCalc[]>([]);
+  const [photos, setPhotos] = useState<PhotoData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,10 +54,12 @@ export default function GudangDetailPage() {
     Promise.all([
       fetch(`${API_BASE_URL}/api/master-data/gudang/${id}`).then((res) => res.json()),
       fetch(`${API_BASE_URL}/api/stocks/?gudang_id=${id}`).then((res) => res.json()),
+      fetch(`${API_BASE_URL}/api/photos/gudang/${id}`).then((res) => res.json()),
     ])
-      .then(([gudangData, stockData]) => {
+      .then(([gudangData, stockData, photoData]) => {
         setGudang(gudangData);
         setStocks(Array.isArray(stockData) ? stockData : []);
+        setPhotos(Array.isArray(photoData) ? photoData : []);
         setLoading(false);
       })
       .catch((err) => {
@@ -56,6 +67,9 @@ export default function GudangDetailPage() {
         setLoading(false);
       });
   }, [id]);
+
+  const fotoDepan = photos.find(p => p.kamera_id === "CCTV Pintu Depan");
+  const fotoDalam = photos.find(p => p.kamera_id === "CCTV Dalam Area Stok");
 
   const fmt = (n: number) => n.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -92,25 +106,56 @@ export default function GudangDetailPage() {
             Live CCTV Gudang
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Foto 1 */}
+            {/* Foto Depan */}
             <div className="group relative rounded-lg overflow-hidden border border-gray-200 bg-gray-100 aspect-video flex flex-col items-center justify-center">
-              <Camera className="w-8 h-8 text-gray-400 mb-2 opacity-50" />
-              <span className="text-xs text-gray-500 font-medium">CCTV Pintu Depan</span>
-              <div className="absolute inset-0 bg-black/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <span className="bg-white/90 text-xs px-2 py-1 rounded text-gray-800 font-medium cursor-pointer shadow-sm">Lihat Penuh</span>
-              </div>
+              {fotoDepan ? (
+                <img src={fotoDepan.url} alt="CCTV Pintu Depan" className="object-cover w-full h-full" />
+              ) : (
+                <>
+                  <Camera className="w-8 h-8 text-gray-400 mb-2 opacity-50" />
+                  <span className="text-xs text-gray-500 font-medium text-center px-4">
+                    Belum ada foto CCTV Pintu Depan
+                  </span>
+                </>
+              )}
+              {fotoDepan && (
+                <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="bg-white/90 text-xs px-2 py-1 rounded text-gray-800 font-medium cursor-pointer shadow-sm">
+                    Lihat Penuh
+                  </span>
+                  <span className="text-[10px] text-white mt-2">
+                    {new Date(fotoDepan.waktu_jepret).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              )}
             </div>
-            {/* Foto 2 */}
+
+            {/* Foto Dalam */}
             <div className="group relative rounded-lg overflow-hidden border border-gray-200 bg-gray-100 aspect-video flex flex-col items-center justify-center">
-              <Camera className="w-8 h-8 text-gray-400 mb-2 opacity-50" />
-              <span className="text-xs text-gray-500 font-medium">CCTV Dalam Area Stok</span>
-              <div className="absolute inset-0 bg-black/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <span className="bg-white/90 text-xs px-2 py-1 rounded text-gray-800 font-medium cursor-pointer shadow-sm">Lihat Penuh</span>
-              </div>
+              {fotoDalam ? (
+                <img src={fotoDalam.url} alt="CCTV Dalam Area Stok" className="object-cover w-full h-full" />
+              ) : (
+                <>
+                  <Camera className="w-8 h-8 text-gray-400 mb-2 opacity-50" />
+                  <span className="text-xs text-gray-500 font-medium text-center px-4">
+                    Belum ada foto CCTV Dalam Area Stok
+                  </span>
+                </>
+              )}
+              {fotoDalam && (
+                <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="bg-white/90 text-xs px-2 py-1 rounded text-gray-800 font-medium cursor-pointer shadow-sm">
+                    Lihat Penuh
+                  </span>
+                  <span className="text-[10px] text-white mt-2">
+                    {new Date(fotoDalam.waktu_jepret).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
           <p className="text-xs text-gray-400 mt-4 italic">
-            *Fitur koneksi langsung ke feed CCTV R2 sedang dalam pengembangan. Ini adalah placeholder 2 kamera per gudang.
+            *Menampilkan foto CCTV terbaru dari R2 Cloudflare. Anda bisa mengunggah foto manual di menu Upload.
           </p>
         </div>
 
