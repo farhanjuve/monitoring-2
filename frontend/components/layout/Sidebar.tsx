@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, Upload, History } from "lucide-react";
+import { LayoutDashboard, Upload, Camera, History } from "lucide-react";
 
 export function Sidebar() {
   const menus = [
