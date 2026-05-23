@@ -92,8 +92,8 @@ export function UploadSAPForm() {
         throw new Error(data.detail || "Upload gagal");
       }
       setResult(data);
-    } catch (err: any) {
-      setError(err.message || "Terjadi kesalahan saat mengupload file.");
+    } catch (err: unknown) {
+      setError((err as Error).message || "Terjadi kesalahan saat mengupload file.");
     } finally {
       setLoading(false);
     }
@@ -133,8 +133,8 @@ export function UploadSAPForm() {
         throw new Error(data.detail || "Upload gagal");
       }
       setMasterResult(data);
-    } catch (err: any) {
-      setMasterError(err.message || "Terjadi kesalahan saat mengupload file master.");
+    } catch (err: unknown) {
+      setMasterError((err as Error).message || "Terjadi kesalahan saat mengupload file master.");
     } finally {
       setMasterLoading(false);
     }
