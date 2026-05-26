@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { API_BASE_URL } from "@/lib/api";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, PackageOpen } from "lucide-react";
 import Link from "next/link";
 
-interface StockCalc {
+export interface StockCalc {
   id: number;
   tanggal: string;
   gudang_id: number;
@@ -29,43 +28,31 @@ type GroupedData = {
   };
 };
 
-export function StockTable() {
-  const [data, setData] = useState<StockCalc[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filterPupuk, setFilterPupuk] = useState("Semua");
-  
+interface StockTableProps {
+  data: StockCalc[];
+  loading?: boolean;
+  tipePupuk?: string;
+}
+
+export function StockTable({ data, loading = false, tipePupuk = "Semua" }: StockTableProps) {
   const [expandedProv, setExpandedProv] = useState<Record<string, boolean>>({});
   const [expandedKota, setExpandedKota] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/api/stocks/`)
-      .then((res) => res.json())
-      .then((d) => {
-        setData(Array.isArray(d) ? d : []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  const filteredData = useMemo(() => {
-    return filterPupuk === "Semua" ? data : data.filter((r) => r.tipe_pupuk === filterPupuk);
-  }, [data, filterPupuk]);
-
   const grouped = useMemo(() => {
     const g: GroupedData = {};
-    filteredData.forEach((row) => {
+    data.forEach((row) => {
       const prov = row.provinsi || "Tidak Diketahui";
       const kota = row.kota || "Tidak Diketahui";
-      const gudangKey = `${row.gudang_id}|${row.nama_gudang || 'Gudang ID: ' + row.gudang_id}|${row.kode_plants || ''}`;
-      
+      const gudangKey = `${row.gudang_id}|${row.nama_gudang || `Gudang ID: ${row.gudang_id}`}|${row.kode_plants || ""}`;
+
       if (!g[prov]) g[prov] = {};
       if (!g[prov][kota]) g[prov][kota] = {};
       if (!g[prov][kota][gudangKey]) g[prov][kota][gudangKey] = [];
-      
+
       g[prov][kota][gudangKey].push(row);
     });
     return g;
-  }, [filteredData]);
+  }, [data]);
 
   const fmt = (n: number) => n.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -85,32 +72,22 @@ export function StockTable() {
           <PackageOpen className="w-5 h-5 text-pupuk-darkBlue" />
           Detail Stok Per Lokasi
         </h3>
-        <select
-          value={filterPupuk}
-          onChange={(e) => setFilterPupuk(e.target.value)}
-          className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pupuk-turquoise bg-white"
-        >
-          <option>Semua</option>
-          <option>Urea</option>
-          <option>NPK</option>
-          <option>ZA</option>
-          <option>SP-36</option>
-          <option>Organik</option>
-        </select>
+        <span className="text-xs text-gray-500">
+          Filter pupuk: <b>{tipePupuk}</b>
+        </span>
       </div>
 
       <div className="p-4">
         {loading ? (
           <div className="text-center py-8 text-gray-400">Memuat data...</div>
-        ) : filteredData.length === 0 ? (
+        ) : data.length === 0 ? (
           <div className="text-center py-8 text-gray-400">
-            Belum ada data stok untuk hari ini. Silakan upload file MB52 & ZSD_SODO terlebih dahulu.
+            Belum ada data stok untuk kombinasi filter saat ini.
           </div>
         ) : (
           <div className="space-y-4">
             {Object.keys(grouped).sort().map((prov) => (
               <div key={prov} className="border border-gray-200 rounded-lg overflow-hidden">
-                {/* Header Provinsi */}
                 <button
                   onClick={() => toggleProv(prov)}
                   className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left font-semibold text-gray-800"
@@ -124,7 +101,6 @@ export function StockTable() {
                   </span>
                 </button>
 
-                {/* Konten Provinsi (Daftar Kota) */}
                 {expandedProv[prov] && (
                   <div className="bg-white">
                     {Object.keys(grouped[prov]).sort().map((kota) => {
@@ -144,15 +120,14 @@ export function StockTable() {
                             </span>
                           </button>
 
-                          {/* Konten Kota (Daftar Gudang) */}
                           {expandedKota[kotaKey] && (
                             <div className="bg-gray-50/50 p-4 pl-16 border-t border-gray-100">
                               <div className="space-y-4">
                                 {Object.keys(grouped[prov][kota]).sort().map((gudangKey) => {
-                                  const [gudangId, namaGudang, kodePlants] = gudangKey.split('|');
+                                  const [gudangId, namaGudang, kodePlants] = gudangKey.split("|");
                                   const stocks = grouped[prov][kota][gudangKey];
                                   const displayName = kodePlants ? `${namaGudang} - ${kodePlants}` : namaGudang;
-                                  
+
                                   return (
                                     <div key={gudangId} className="bg-white border border-gray-200 rounded-md overflow-hidden shadow-sm">
                                       <div className="bg-gray-100 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
@@ -179,8 +154,8 @@ export function StockTable() {
                                                 <td className="px-4 py-2">
                                                   <span className={`px-2 py-1 rounded-full text-[10px] font-medium ${
                                                     row.tipe_pupuk === "Urea" ? "bg-blue-100 text-blue-800"
-                                                    : row.tipe_pupuk === "NPK" ? "bg-green-100 text-green-800"
-                                                    : "bg-gray-100 text-gray-800"
+                                                      : row.tipe_pupuk === "NPK" ? "bg-green-100 text-green-800"
+                                                      : "bg-gray-100 text-gray-800"
                                                   }`}>
                                                     {row.tipe_pupuk}
                                                   </span>

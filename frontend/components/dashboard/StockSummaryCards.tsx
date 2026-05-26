@@ -1,14 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { Box, PackageOpen, Truck, Warehouse, ClipboardCheck } from "lucide-react";
-import { API_BASE_URL } from "@/lib/api";
 
 interface StockCalc {
-  id: number;
-  tanggal: string;
-  kode_plant: string;
-  tipe_pupuk: string;
   stok_fisik: number;
   outstanding_so: number;
   stok_admin_tanpa_intransit: number;
@@ -16,35 +10,28 @@ interface StockCalc {
   stok_admin: number;
 }
 
-export function StockSummaryCards() {
-  const [totals, setTotals] = useState({
-    stok_fisik: 0,
-    outstanding_so: 0,
-    stok_admin_tanpa_intransit: 0,
-    intransit: 0,
-    stok_admin: 0,
-  });
-  const [loaded, setLoaded] = useState(false);
+interface StockSummaryCardsProps {
+  data: StockCalc[];
+  loading?: boolean;
+}
 
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/api/stocks/`)
-      .then((res) => res.json())
-      .then((data: StockCalc[]) => {
-        const agg = data.reduce(
-          (acc, row) => ({
-            stok_fisik: acc.stok_fisik + row.stok_fisik,
-            outstanding_so: acc.outstanding_so + row.outstanding_so,
-            stok_admin_tanpa_intransit: acc.stok_admin_tanpa_intransit + row.stok_admin_tanpa_intransit,
-            intransit: acc.intransit + row.intransit,
-            stok_admin: acc.stok_admin + row.stok_admin,
-          }),
-          { stok_fisik: 0, outstanding_so: 0, stok_admin_tanpa_intransit: 0, intransit: 0, stok_admin: 0 }
-        );
-        setTotals(agg);
-        setLoaded(true);
-      })
-      .catch(() => setLoaded(true));
-  }, []);
+export function StockSummaryCards({ data, loading = false }: StockSummaryCardsProps) {
+  const totals = data.reduce(
+    (acc, row) => ({
+      stok_fisik: acc.stok_fisik + row.stok_fisik,
+      outstanding_so: acc.outstanding_so + row.outstanding_so,
+      stok_admin_tanpa_intransit: acc.stok_admin_tanpa_intransit + row.stok_admin_tanpa_intransit,
+      intransit: acc.intransit + row.intransit,
+      stok_admin: acc.stok_admin + row.stok_admin,
+    }),
+    {
+      stok_fisik: 0,
+      outstanding_so: 0,
+      stok_admin_tanpa_intransit: 0,
+      intransit: 0,
+      stok_admin: 0,
+    }
+  );
 
   const fmt = (n: number) => n.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -66,7 +53,7 @@ export function StockSummaryCards() {
           <div>
             <p className="text-sm text-gray-500 font-medium">{item.title}</p>
             <p className="text-2xl font-bold text-gray-800">
-              {loaded ? item.value : "..."} <span className="text-sm text-gray-400 font-normal">{item.unit}</span>
+              {loading ? "..." : item.value} <span className="text-sm text-gray-400 font-normal">{item.unit}</span>
             </p>
           </div>
         </div>

@@ -17,6 +17,14 @@ interface UploadResult {
   };
 }
 
+interface BulkUploadResult {
+  filename: string;
+  status: "success" | "error";
+  gudang?: string;
+  kamera?: string;
+  reason?: string;
+}
+
 export function UploadSAPForm() {
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
   
@@ -54,7 +62,7 @@ export function UploadSAPForm() {
   // Bulk Photo Upload state
   const [bulkFiles, setBulkFiles] = useState<File[]>([]);
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkResults, setBulkResults] = useState<any[] | null>(null);
+  const [bulkResults, setBulkResults] = useState<BulkUploadResult[] | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const bulkRef = useRef<HTMLInputElement>(null);
 
@@ -166,8 +174,8 @@ export function UploadSAPForm() {
       }
       setPhotoResult(data);
       setPhotoFile(null);
-    } catch (err: any) {
-      setPhotoError(err.message || "Terjadi kesalahan saat mengupload foto.");
+    } catch (err: unknown) {
+      setPhotoError((err as Error).message || "Terjadi kesalahan saat mengupload foto.");
     } finally {
       setPhotoLoading(false);
     }
@@ -187,7 +195,7 @@ export function UploadSAPForm() {
     const feedStr = parts[1].trim().toLowerCase();
     
     // Find warehouse
-    const matchGudang = (gudangList as any[]).find(g => 
+    const matchGudang = gudangList.find(g => 
       g.kode_plants && g.kode_plants.map((p: string) => p.toUpperCase()).includes(plantCode)
     );
     
@@ -248,8 +256,8 @@ export function UploadSAPForm() {
       }
       setBulkResults(data.results);
       setBulkFiles([]);
-    } catch (err: any) {
-      setBulkError(err.message || "Terjadi kesalahan saat mengunggah foto secara massal.");
+    } catch (err: unknown) {
+      setBulkError((err as Error).message || "Terjadi kesalahan saat mengunggah foto secara massal.");
     } finally {
       setBulkLoading(false);
     }
@@ -629,7 +637,7 @@ export function UploadSAPForm() {
               Laporan Hasil Bulk Upload
             </div>
             <div className="divide-y divide-gray-100 max-h-60 overflow-y-auto text-xs">
-              {bulkResults.map((res: any, idx: number) => (
+              {bulkResults.map((res: BulkUploadResult, idx: number) => (
                 <div key={idx} className="p-3 flex justify-between items-start">
                   <span className="font-mono text-gray-700 break-all pr-2">{res.filename}</span>
                   {res.status === "success" ? (

@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.models.models import Photo, Warehouse, WarehousePlant
 
 router = APIRouter()
+LOCAL_STORAGE_DIR = os.path.join(os.getcwd(), "storage", "mock-storage")
 
 def get_s3_client():
     if not settings.R2_ACCOUNT_ID or not settings.R2_ACCESS_KEY_ID:
@@ -26,6 +27,16 @@ def get_s3_client():
         aws_secret_access_key=settings.R2_SECRET_ACCESS_KEY,
         region_name="auto"
     )
+
+def save_locally(upload_file: UploadFile, key: str) -> str:
+    local_path = os.path.join(LOCAL_STORAGE_DIR, key)
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+    upload_file.file.seek(0)
+    with open(local_path, "wb") as f:
+        f.write(upload_file.file.read())
+    upload_file.file.seek(0)
+    return f"/mock-storage/{key}"
 
 @router.post("/upload")
 async def upload_photo(
@@ -73,8 +84,8 @@ async def upload_photo(
         except ClientError as e:
             raise HTTPException(status_code=500, detail=f"Gagal mengunggah ke R2: {str(e)}")
     else:
-        # Mock URL untuk development lokal
-        file_url = f"/mock-storage/{unique_filename}"
+        # Simpan lokal bila R2 belum dikonfigurasi.
+        file_url = save_locally(file, unique_filename)
 
     # Hitung file_size_kb
     file.file.seek(0, 2)
@@ -138,6 +149,40 @@ def get_photos(gudang_id: int, tanggal: str | None = None, db: Session = Depends
             "url": p.r2_url
         }
         for p in photos
+    ]
+
+@router.get("/gallery")
+def get_gallery(tanggal: str | None = None, db: Session = Depends(get_db)):
+    """Ambil galeri grouped per gudang, default untuk tanggal hari ini."""
+    selected_date = tanggal or datetime.now().strftime("%Y-%m-%d")
+    photos = db.query(Photo).filter(Photo.tanggal == selected_date).order_by(Photo.gudang_id.asc(), Photo.feed_number.asc(), Photo.uploaded_at.desc()).all()
+
+    grouped: dict[int, dict] = {}
+    for p in photos:
+        if p.gudang_id not in grouped:
+            gudang = db.query(Warehouse).filter(Warehouse.id == p.gudang_id).first()
+            if not gudang:
+                continue
+            grouped[p.gudang_id] = {
+                "gudang_id": gudang.id,
+                "gudang": f"{gudang.nama_gudang} - {gudang.kota}",
+                "date": str(p.tanggal),
+                "photos": {}
+            }
+
+        # Ambil foto terbaru per feed.
+        if p.feed_number not in grouped[p.gudang_id]["photos"]:
+            grouped[p.gudang_id]["photos"][p.feed_number] = p.r2_url
+
+    return [
+        {
+            "gudang_id": item["gudang_id"],
+            "gudang": item["gudang"],
+            "date": item["date"],
+            "photos": [item["photos"][k] for k in sorted(item["photos"].keys())]
+        }
+        for item in grouped.values()
+        if item["photos"]
     ]
 
 @router.post("/bulk-upload")
@@ -258,7 +303,7 @@ async def bulk_upload_photos(
                 })
                 continue
         else:
-            file_url = f"/mock-storage/{unique_filename}"
+            file_url = save_locally(file, unique_filename)
             
         # Upsert
         existing_photo = db.query(Photo).filter(
