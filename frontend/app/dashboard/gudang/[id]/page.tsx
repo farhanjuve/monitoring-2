@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 import { ArrowLeft, PackageOpen, Camera } from "lucide-react";
 import Link from "next/link";
@@ -38,14 +38,22 @@ interface StockCalc {
   stok_admin: number;
 }
 
+interface RecommendationItem {
+  gudang_id: number;
+  nama_gudang: string;
+  kota: string;
+  provinsi: string;
+}
+
 export default function GudangDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const router = useRouter();
 
   const [gudang, setGudang] = useState<GudangData | null>(null);
   const [stocks, setStocks] = useState<StockCalc[]>([]);
   const [photos, setPhotos] = useState<PhotoData[]>([]);
+  const [selectedPhoto, setSelectedPhoto] = useState<PhotoData | null>(null);
+  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -56,10 +64,50 @@ export default function GudangDetailPage() {
       fetch(`${API_BASE_URL}/api/stocks/?gudang_id=${id}`).then((res) => res.json()),
       fetch(`${API_BASE_URL}/api/photos/gudang/${id}`).then((res) => res.json()),
     ])
-      .then(([gudangData, stockData, photoData]) => {
+      .then(async ([gudangData, stockData, photoData]) => {
         setGudang(gudangData);
-        setStocks(Array.isArray(stockData) ? stockData : []);
-        setPhotos(Array.isArray(photoData) ? photoData : []);
+        const stockRows = Array.isArray(stockData) ? stockData : [];
+        const photoRows = Array.isArray(photoData) ? photoData : [];
+        setStocks(stockRows);
+        setPhotos(photoRows);
+
+        const selectedDate =
+          (stockRows[0]?.tanggal as string | undefined) ||
+          (photoRows[0]?.tanggal as string | undefined) ||
+          new Date().toISOString().split("T")[0];
+
+        try {
+          const [allStocksRes, galleryRes] = await Promise.all([
+            fetch(`${API_BASE_URL}/api/stocks/?tanggal=${selectedDate}`).then((res) => res.json()),
+            fetch(`${API_BASE_URL}/api/photos/gallery?tanggal=${selectedDate}`).then((res) => res.json()),
+          ]);
+
+          const allStocks: StockCalc[] = Array.isArray(allStocksRes) ? allStocksRes : [];
+          const galleryItems: Array<{ gudang_id: number; photos: string[] }> = Array.isArray(galleryRes) ? galleryRes : [];
+          const gudangWithCctv = new Set(
+            galleryItems.filter((g) => Array.isArray(g.photos) && g.photos.length > 0).map((g) => g.gudang_id)
+          );
+
+          const uniqueByGudang = new Map<number, RecommendationItem>();
+          allStocks.forEach((row) => {
+            if (row.gudang_id === Number(id)) return;
+            if (!gudangWithCctv.has(row.gudang_id)) return;
+            if (!uniqueByGudang.has(row.gudang_id)) {
+              uniqueByGudang.set(row.gudang_id, {
+                gudang_id: row.gudang_id,
+                nama_gudang: row.nama_gudang || `Gudang ID ${row.gudang_id}`,
+                kota: row.kota || "-",
+                provinsi: row.provinsi || "-",
+              });
+            }
+          });
+
+          setRecommendations(Array.from(uniqueByGudang.values()).slice(0, 3));
+        } catch (recErr) {
+          console.error(recErr);
+          setRecommendations([]);
+        }
+
         setLoading(false);
       })
       .catch((err) => {
@@ -70,6 +118,7 @@ export default function GudangDetailPage() {
 
   const fotoDepan = photos.find(p => p.kamera_id === "CCTV Pintu Depan");
   const fotoDalam = photos.find(p => p.kamera_id === "CCTV Dalam Area Stok");
+  const resolvePhotoUrl = (url: string) => (url.startsWith("http://") || url.startsWith("https://")) ? url : `${API_BASE_URL}${url}`;
 
   const fmt = (n: number) => n.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -109,7 +158,7 @@ export default function GudangDetailPage() {
             {/* Foto Depan */}
             <div className="group relative rounded-lg overflow-hidden border border-gray-200 bg-gray-100 aspect-video flex flex-col items-center justify-center">
               {fotoDepan ? (
-                <img src={fotoDepan.url} alt="CCTV Pintu Depan" className="object-cover w-full h-full" />
+                <img src={resolvePhotoUrl(fotoDepan.url)} alt="CCTV Pintu Depan" className="object-cover w-full h-full" />
               ) : (
                 <>
                   <Camera className="w-8 h-8 text-gray-400 mb-2 opacity-50" />
@@ -119,21 +168,25 @@ export default function GudangDetailPage() {
                 </>
               )}
               {fotoDepan && (
-                <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="bg-white/90 text-xs px-2 py-1 rounded text-gray-800 font-medium cursor-pointer shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPhoto(fotoDepan)}
+                  className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <span className="bg-white/90 text-xs px-2 py-1 rounded text-gray-800 font-medium shadow-sm">
                     Lihat Penuh
                   </span>
                   <span className="text-[10px] text-white mt-2">
                     {new Date(fotoDepan.waktu_jepret).toLocaleString('id-ID')}
                   </span>
-                </div>
+                </button>
               )}
             </div>
 
             {/* Foto Dalam */}
             <div className="group relative rounded-lg overflow-hidden border border-gray-200 bg-gray-100 aspect-video flex flex-col items-center justify-center">
               {fotoDalam ? (
-                <img src={fotoDalam.url} alt="CCTV Dalam Area Stok" className="object-cover w-full h-full" />
+                <img src={resolvePhotoUrl(fotoDalam.url)} alt="CCTV Dalam Area Stok" className="object-cover w-full h-full" />
               ) : (
                 <>
                   <Camera className="w-8 h-8 text-gray-400 mb-2 opacity-50" />
@@ -143,14 +196,18 @@ export default function GudangDetailPage() {
                 </>
               )}
               {fotoDalam && (
-                <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="bg-white/90 text-xs px-2 py-1 rounded text-gray-800 font-medium cursor-pointer shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPhoto(fotoDalam)}
+                  className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <span className="bg-white/90 text-xs px-2 py-1 rounded text-gray-800 font-medium shadow-sm">
                     Lihat Penuh
                   </span>
                   <span className="text-[10px] text-white mt-2">
                     {new Date(fotoDalam.waktu_jepret).toLocaleString('id-ID')}
                   </span>
-                </div>
+                </button>
               )}
             </div>
           </div>
@@ -196,6 +253,56 @@ export default function GudangDetailPage() {
           )}
         </div>
       </div>
+
+      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+        <h3 className="font-semibold text-gray-800 mb-4">
+          Rekomendasi Gudang Lain (Stok & CCTV Tersedia)
+        </h3>
+        {recommendations.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            Belum ada minimal 3 gudang lain yang memenuhi kriteria stok dan CCTV pada tanggal yang sama.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {recommendations.map((rec) => (
+              <Link
+                key={rec.gudang_id}
+                href={`/dashboard/gudang/${rec.gudang_id}`}
+                className="block border border-gray-200 rounded-lg p-4 hover:border-pupuk-turquoise hover:shadow-sm transition"
+              >
+                <p className="text-sm font-semibold text-pupuk-darkBlue">{rec.nama_gudang}</p>
+                <p className="text-xs text-gray-500 mt-1">{rec.kota}, {rec.provinsi}</p>
+                <p className="text-[11px] text-gray-400 mt-2">Lihat detail gudang →</p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {selectedPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <div className="relative max-w-6xl w-full" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="absolute -top-10 right-0 text-white text-sm bg-white/20 hover:bg-white/30 rounded px-3 py-1"
+              onClick={() => setSelectedPhoto(null)}
+            >
+              Tutup
+            </button>
+            <img
+              src={resolvePhotoUrl(selectedPhoto.url)}
+              alt={selectedPhoto.kamera_id}
+              className="w-full max-h-[85vh] object-contain rounded-md"
+            />
+            <div className="mt-2 text-white text-xs text-right">
+              {selectedPhoto.kamera_id} • {new Date(selectedPhoto.waktu_jepret).toLocaleString("id-ID")}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

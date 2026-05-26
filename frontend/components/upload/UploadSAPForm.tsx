@@ -25,6 +25,16 @@ interface BulkUploadResult {
   reason?: string;
 }
 
+interface UploadDryRunResult {
+  valid: boolean;
+  file_type: "MB52" | "ZSD_SODO";
+  column_count: number;
+  expected_min_column_count: number;
+  required_columns: string[];
+  actual_columns: string[];
+  rows_parsed: number;
+}
+
 export function UploadSAPForm() {
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
   
@@ -32,6 +42,7 @@ export function UploadSAPForm() {
   const [mb52File, setMb52File] = useState<File | null>(null);
   const [mb52Loading, setMb52Loading] = useState(false);
   const [mb52Result, setMb52Result] = useState<UploadResult | null>(null);
+  const [mb52DryRun, setMb52DryRun] = useState<UploadDryRunResult | null>(null);
   const [mb52Error, setMb52Error] = useState<string | null>(null);
   const mb52Ref = useRef<HTMLInputElement>(null);
 
@@ -39,6 +50,7 @@ export function UploadSAPForm() {
   const [zsdFile, setZsdFile] = useState<File | null>(null);
   const [zsdLoading, setZsdLoading] = useState(false);
   const [zsdResult, setZsdResult] = useState<UploadResult | null>(null);
+  const [zsdDryRun, setZsdDryRun] = useState<UploadDryRunResult | null>(null);
   const [zsdError, setZsdError] = useState<string | null>(null);
   const zsdRef = useRef<HTMLInputElement>(null);
 
@@ -100,10 +112,38 @@ export function UploadSAPForm() {
         throw new Error(data.detail || "Upload gagal");
       }
       setResult(data);
-    } catch (err: any) {
-      setError(err.message || "Terjadi kesalahan saat mengupload file.");
+    } catch (err: unknown) {
+      setError((err as Error).message || "Terjadi kesalahan saat mengupload file.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDryRun = async (
+    type: "mb52" | "zsd-sodo",
+    file: File,
+    setResult: (v: UploadDryRunResult | null) => void,
+    setError: (v: string | null) => void,
+  ) => {
+    setError(null);
+    setResult(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("tanggal", tanggal);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/stocks/upload/${type}/dry-run`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Preview validasi gagal");
+      }
+      setResult(data);
+    } catch (err: unknown) {
+      setError((err as Error).message || "Terjadi kesalahan saat preview validasi.");
     }
   };
 
@@ -141,8 +181,8 @@ export function UploadSAPForm() {
         throw new Error(data.detail || "Upload gagal");
       }
       setMasterResult(data);
-    } catch (err: any) {
-      setMasterError(err.message || "Terjadi kesalahan saat mengupload file master.");
+    } catch (err: unknown) {
+      setMasterError((err as Error).message || "Terjadi kesalahan saat mengupload file master.");
     } finally {
       setMasterLoading(false);
     }
@@ -292,7 +332,13 @@ export function UploadSAPForm() {
           type="file"
           accept=".xlsx,.xls"
           className="hidden"
-          onChange={(e) => e.target.files?.[0] && setMb52File(e.target.files[0])}
+          onChange={(e) => {
+            if (e.target.files?.[0]) {
+              setMb52File(e.target.files[0]);
+              setMb52DryRun(null);
+              setMb52Error(null);
+            }
+          }}
         />
 
         <div
@@ -318,16 +364,26 @@ export function UploadSAPForm() {
         </div>
 
         {mb52File && (
-          <button
-            onClick={() => handleUpload("mb52", mb52File, setMb52Loading, setMb52Result, setMb52Error)}
-            disabled={mb52Loading}
-            className="mt-4 bg-pupuk-darkBlue text-white px-6 py-2.5 rounded-md font-medium hover:bg-pupuk-darkBlue/90 transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            {mb52Loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
-            {mb52Loading ? "Memproses..." : "Upload & Proses MB52"}
-          </button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => handleDryRun("mb52", mb52File, setMb52DryRun, setMb52Error)}
+              disabled={mb52Loading}
+              className="bg-white border border-pupuk-darkBlue text-pupuk-darkBlue px-4 py-2.5 rounded-md font-medium hover:bg-blue-50 transition-colors disabled:opacity-50"
+            >
+              Preview Validasi MB52
+            </button>
+            <button
+              onClick={() => handleUpload("mb52", mb52File, setMb52Loading, setMb52Result, setMb52Error)}
+              disabled={mb52Loading}
+              className="bg-pupuk-darkBlue text-white px-6 py-2.5 rounded-md font-medium hover:bg-pupuk-darkBlue/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {mb52Loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+              {mb52Loading ? "Memproses..." : "Upload & Proses MB52"}
+            </button>
+          </div>
         )}
 
+        {mb52DryRun && <DryRunBanner result={mb52DryRun} />}
         {mb52Result && <ResultBanner result={mb52Result} />}
         {mb52Error && <ErrorBanner message={mb52Error} />}
       </div>
@@ -342,7 +398,13 @@ export function UploadSAPForm() {
           type="file"
           accept=".xlsx,.xls"
           className="hidden"
-          onChange={(e) => e.target.files?.[0] && setZsdFile(e.target.files[0])}
+          onChange={(e) => {
+            if (e.target.files?.[0]) {
+              setZsdFile(e.target.files[0]);
+              setZsdDryRun(null);
+              setZsdError(null);
+            }
+          }}
         />
 
         <div
@@ -368,16 +430,26 @@ export function UploadSAPForm() {
         </div>
 
         {zsdFile && (
-          <button
-            onClick={() => handleUpload("zsd-sodo", zsdFile, setZsdLoading, setZsdResult, setZsdError)}
-            disabled={zsdLoading}
-            className="mt-4 bg-pupuk-darkBlue text-white px-6 py-2.5 rounded-md font-medium hover:bg-pupuk-darkBlue/90 transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            {zsdLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
-            {zsdLoading ? "Memproses..." : "Upload & Proses ZSD_SODO"}
-          </button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => handleDryRun("zsd-sodo", zsdFile, setZsdDryRun, setZsdError)}
+              disabled={zsdLoading}
+              className="bg-white border border-pupuk-darkBlue text-pupuk-darkBlue px-4 py-2.5 rounded-md font-medium hover:bg-blue-50 transition-colors disabled:opacity-50"
+            >
+              Preview Validasi ZSD_SODO
+            </button>
+            <button
+              onClick={() => handleUpload("zsd-sodo", zsdFile, setZsdLoading, setZsdResult, setZsdError)}
+              disabled={zsdLoading}
+              className="bg-pupuk-darkBlue text-white px-6 py-2.5 rounded-md font-medium hover:bg-pupuk-darkBlue/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {zsdLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+              {zsdLoading ? "Memproses..." : "Upload & Proses ZSD_SODO"}
+            </button>
+          </div>
         )}
 
+        {zsdDryRun && <DryRunBanner result={zsdDryRun} />}
         {zsdResult && <ResultBanner result={zsdResult} />}
         {zsdError && <ErrorBanner message={zsdError} />}
       </div>
@@ -673,6 +745,27 @@ function ResultBanner({ result }: { result: UploadResult }) {
             <span>Kalkulasi diperbarui: <b>{result.calculations_updated}</b></span>
             <span>File: <b>{result.upload.filename}</b></span>
             <span>Tanggal data: <b>{result.upload.tanggal_data}</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DryRunBanner({ result }: { result: UploadDryRunResult }) {
+  return (
+    <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="flex items-start gap-3">
+        <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-blue-800">
+            Preview validasi {result.file_type} berhasil
+          </p>
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-blue-700">
+            <span>Jumlah kolom file: <b>{result.column_count}</b></span>
+            <span>Minimal kolom diharapkan: <b>{result.expected_min_column_count}</b></span>
+            <span>Baris valid ter-parse: <b>{result.rows_parsed}</b></span>
+            <span>Kolom wajib: <b>{result.required_columns.join(", ")}</b></span>
           </div>
         </div>
       </div>

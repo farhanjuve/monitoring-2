@@ -16,7 +16,7 @@ from typing import List, Optional
 from app.core.database import get_db
 from app.models.models import StockCalculation, SAPUpload
 from app.schemas.schemas import StockCalculationOut, StockPreview, SAPUploadOut, UploadResponse
-from app.services.sap_parser import parse_mb52, parse_zsd_sodo
+from app.services.sap_parser import parse_mb52, parse_zsd_sodo, preview_mb52, preview_zsd_sodo
 from app.services.stock_calculator import (
     calculate_daily_stock,
     update_stock_calculation,
@@ -136,6 +136,36 @@ async def upload_zsd_sodo(
         upload_record.error_message = str(e)
         db.commit()
         raise HTTPException(status_code=400, detail=f"Gagal memproses file ZSD_SODO: {str(e)}")
+
+
+@router.post("/upload/mb52/dry-run")
+async def dry_run_mb52(
+    file: UploadFile = File(...),
+    tanggal: date = Form(...),
+):
+    fname = (file.filename or "").lower()
+    if not fname.endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail=f"File harus berformat .xlsx atau .xls (diterima: {file.filename})")
+    file_bytes = await file.read()
+    try:
+        return preview_mb52(file_bytes, tanggal)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Dry-run MB52 gagal: {str(e)}")
+
+
+@router.post("/upload/zsd-sodo/dry-run")
+async def dry_run_zsd_sodo(
+    file: UploadFile = File(...),
+    tanggal: date = Form(...),
+):
+    fname = (file.filename or "").lower()
+    if not fname.endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail=f"File harus berformat .xlsx atau .xls (diterima: {file.filename})")
+    file_bytes = await file.read()
+    try:
+        return preview_zsd_sodo(file_bytes, tanggal)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Dry-run ZSD_SODO gagal: {str(e)}")
 
 
 # ==================== Query Endpoints ====================

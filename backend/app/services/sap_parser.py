@@ -22,6 +22,11 @@ PUPUK_KEYWORDS = {
     "Organik": ["organik", "organic", "pupuk hayati"],
 }
 
+MB52_REQUIRED_COLUMNS = {"Plant", "Material Description", "Unrestricted"}
+MB52_EXPECTED_MIN_COLUMNS = 5
+ZSD_REQUIRED_COLUMNS = {"Plant SO", "Deskripsi Material", "Outstanding SO"}
+ZSD_EXPECTED_MIN_COLUMNS = 5
+
 
 def classify_pupuk(material_desc: str) -> str:
     """Klasifikasikan jenis pupuk dari deskripsi material (case-insensitive)."""
@@ -33,6 +38,65 @@ def classify_pupuk(material_desc: str) -> str:
             if kw.lower() in desc_lower:
                 return jenis
     return "Lainnya"
+
+
+def _read_excel_and_normalize(file_bytes: bytes) -> pd.DataFrame:
+    try:
+        df = pd.read_excel(BytesIO(file_bytes))
+    except Exception as e:
+        raise ValueError(f"Gagal membaca file Excel: {e}")
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
+
+
+def _validate_columns(actual_cols: List[str], required: set[str], expected_min: int, file_label: str) -> None:
+    missing = required - set(actual_cols)
+    if missing:
+        raise ValueError(
+            f"Format kolom {file_label} tidak cocok. "
+            f"Jumlah kolom file: {len(actual_cols)}; minimal yang diharapkan: {expected_min}. "
+            f"Kolom wajib tidak ditemukan: {sorted(list(missing))}. "
+            f"Kolom yang ada: {actual_cols}"
+        )
+    if len(actual_cols) < expected_min:
+        raise ValueError(
+            f"Jumlah kolom file {file_label} terlalu sedikit. "
+            f"Ditemukan {len(actual_cols)} kolom, minimal {expected_min} kolom."
+        )
+
+
+def preview_mb52(file_bytes: bytes, tanggal: date) -> Dict[str, Any]:
+    df = _read_excel_and_normalize(file_bytes)
+    actual_cols = df.columns.tolist()
+    _validate_columns(actual_cols, MB52_REQUIRED_COLUMNS, MB52_EXPECTED_MIN_COLUMNS, "MB52")
+    rows = parse_mb52(file_bytes, tanggal)
+    return {
+        "valid": True,
+        "file_type": "MB52",
+        "column_count": len(actual_cols),
+        "expected_min_column_count": MB52_EXPECTED_MIN_COLUMNS,
+        "required_columns": sorted(list(MB52_REQUIRED_COLUMNS)),
+        "actual_columns": actual_cols,
+        "rows_parsed": len(rows),
+        "sample_rows": rows[:5],
+    }
+
+
+def preview_zsd_sodo(file_bytes: bytes, tanggal: date) -> Dict[str, Any]:
+    df = _read_excel_and_normalize(file_bytes)
+    actual_cols = df.columns.tolist()
+    _validate_columns(actual_cols, ZSD_REQUIRED_COLUMNS, ZSD_EXPECTED_MIN_COLUMNS, "ZSD_SODO")
+    rows = parse_zsd_sodo(file_bytes, tanggal)
+    return {
+        "valid": True,
+        "file_type": "ZSD_SODO",
+        "column_count": len(actual_cols),
+        "expected_min_column_count": ZSD_EXPECTED_MIN_COLUMNS,
+        "required_columns": sorted(list(ZSD_REQUIRED_COLUMNS)),
+        "actual_columns": actual_cols,
+        "rows_parsed": len(rows),
+        "sample_rows": rows[:5],
+    }
 
 
 # ============================================================
@@ -51,23 +115,10 @@ def parse_mb52(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
       - Stock in Transit       → intransit (opsional)
       - Base Unit of Measure   → satuan (opsional, untuk validasi)
     """
-    try:
-        df = pd.read_excel(BytesIO(file_bytes))
-    except Exception as e:
-        raise ValueError(f"Gagal membaca file Excel: {e}")
-
-    # Normalisasi nama kolom
-    df.columns = [str(c).strip() for c in df.columns]
+    df = _read_excel_and_normalize(file_bytes)
     actual_cols = df.columns.tolist()
 
-    # Validasi kolom wajib
-    required = {"Plant", "Material Description", "Unrestricted"}
-    missing = required - set(actual_cols)
-    if missing:
-        raise ValueError(
-            f"Kolom wajib tidak ditemukan: {missing}. "
-            f"Kolom yang ada: {actual_cols}"
-        )
+    _validate_columns(actual_cols, MB52_REQUIRED_COLUMNS, MB52_EXPECTED_MIN_COLUMNS, "MB52")
 
     results = []
     for _, row in df.iterrows():
@@ -124,23 +175,10 @@ def parse_zsd_sodo(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
       - Status SO              → status_so
       - Quantity SO            → qty order awal (opsional)
     """
-    try:
-        df = pd.read_excel(BytesIO(file_bytes))
-    except Exception as e:
-        raise ValueError(f"Gagal membaca file Excel: {e}")
-
-    # Normalisasi nama kolom
-    df.columns = [str(c).strip() for c in df.columns]
+    df = _read_excel_and_normalize(file_bytes)
     actual_cols = df.columns.tolist()
 
-    # Validasi kolom wajib
-    required = {"Plant SO", "Deskripsi Material", "Outstanding SO"}
-    missing = required - set(actual_cols)
-    if missing:
-        raise ValueError(
-            f"Kolom wajib tidak ditemukan: {missing}. "
-            f"Kolom yang ada: {actual_cols}"
-        )
+    _validate_columns(actual_cols, ZSD_REQUIRED_COLUMNS, ZSD_EXPECTED_MIN_COLUMNS, "ZSD_SODO")
 
     results = []
     for _, row in df.iterrows():
