@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { LayoutDashboard, Upload, Camera, History } from "lucide-react";
+import { LayoutDashboard, Upload, History, Truck } from "lucide-react";
 
 export function Sidebar() {
   const menus = [
     { name: "Dashboard", icon: LayoutDashboard, href: "/" },
+    { name: "Intransit", icon: Truck, href: "/intransit" },
     { name: "Upload Data SAP", icon: Upload, href: "/upload" },
     { name: "Log Aktivitas", icon: History, href: "/logs" },
   ];

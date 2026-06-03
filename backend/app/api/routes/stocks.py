@@ -197,6 +197,42 @@ def get_stocks(
     return query.all()
 
 
+@router.get("/intransit-range")
+def get_intransit_range(
+    gudang_id: int,
+    tanggal_awal: date,
+    tanggal_akhir: date,
+    db: Session = Depends(get_db),
+):
+    """Ambil data intransit per gudang dan rentang tanggal."""
+    if tanggal_akhir < tanggal_awal:
+        raise HTTPException(status_code=400, detail="Tanggal akhir tidak boleh lebih awal dari tanggal awal.")
+
+    rows = (
+        db.query(StockCalculation)
+        .filter(
+            StockCalculation.gudang_id == gudang_id,
+            StockCalculation.tanggal.between(tanggal_awal, tanggal_akhir),
+        )
+        .order_by(StockCalculation.tipe_pupuk, StockCalculation.tanggal)
+        .all()
+    )
+
+    return [
+        {
+            "tanggal": row.tanggal.isoformat(),
+            "gudang_id": row.gudang_id,
+            "nama_gudang": row.nama_gudang,
+            "kode_plants": row.kode_plants,
+            "kota": row.kota,
+            "provinsi": row.provinsi,
+            "tipe_pupuk": row.tipe_pupuk,
+            "intransit": row.intransit,
+        }
+        for row in rows
+    ]
+
+
 @router.get("/preview", response_model=StockPreview)
 def preview_calculation(
     tanggal: date,
