@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type Dispatch, type SetStateAction } from "react";
 import { UploadCloud, FileSpreadsheet, CheckCircle, XCircle, Loader2, CalendarDays } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 
@@ -35,6 +35,89 @@ interface UploadDryRunResult {
   rows_parsed: number;
 }
 
+type SetProgress = Dispatch<SetStateAction<number>>;
+
+function uploadWithProgress<T>(
+  url: string,
+  formData: FormData,
+  onProgress: (percent: number) => void
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      onProgress(Math.min(70, Math.round((event.loaded / event.total) * 70)));
+    };
+
+    xhr.upload.onload = () => onProgress(70);
+
+    xhr.onload = () => {
+      let data: { detail?: string; message?: string } = {};
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+      } catch {
+        reject(new Error("Response upload tidak valid."));
+        return;
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data as T);
+      } else {
+        reject(new Error(data.detail || data.message || `Upload gagal (${xhr.status})`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Koneksi upload gagal."));
+    xhr.onabort = () => reject(new Error("Upload dibatalkan."));
+    xhr.open("POST", url);
+    xhr.send(formData);
+  });
+}
+
+function startProcessingProgress(setProgress: SetProgress) {
+  setProgress((prev) => Math.max(prev, 70));
+  const timer = window.setInterval(() => {
+    setProgress((prev) => (prev >= 95 ? prev : prev + 1));
+  }, 2000);
+
+  return () => window.clearInterval(timer);
+}
+
+function createUploadProgressController(setProgress: SetProgress) {
+  let stopProcessing: (() => void) | null = null;
+  let hideTimer: number | null = null;
+
+  const cleanup = () => {
+    if (stopProcessing) {
+      stopProcessing();
+      stopProcessing = null;
+    }
+    if (hideTimer) {
+      window.clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+  };
+
+  return {
+    onProgress: (percent: number) => {
+      setProgress(percent);
+      if (percent >= 70 && !stopProcessing) {
+        stopProcessing = startProcessingProgress(setProgress);
+      }
+    },
+    finish: () => {
+      cleanup();
+      setProgress(100);
+      hideTimer = window.setTimeout(() => setProgress(0), 900);
+    },
+    reset: () => {
+      cleanup();
+      setProgress(0);
+    },
+  };
+}
+
 export function UploadSAPForm() {
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
   
@@ -44,6 +127,8 @@ export function UploadSAPForm() {
   const [mb52Result, setMb52Result] = useState<UploadResult | null>(null);
   const [mb52DryRun, setMb52DryRun] = useState<UploadDryRunResult | null>(null);
   const [mb52Error, setMb52Error] = useState<string | null>(null);
+  const [mb52Progress, setMb52Progress] = useState(0);
+  const [mb52DryRunLoading, setMb52DryRunLoading] = useState(false);
   const mb52Ref = useRef<HTMLInputElement>(null);
 
   // ZSD_SODO state
@@ -52,6 +137,8 @@ export function UploadSAPForm() {
   const [zsdResult, setZsdResult] = useState<UploadResult | null>(null);
   const [zsdDryRun, setZsdDryRun] = useState<UploadDryRunResult | null>(null);
   const [zsdError, setZsdError] = useState<string | null>(null);
+  const [zsdProgress, setZsdProgress] = useState(0);
+  const [zsdDryRunLoading, setZsdDryRunLoading] = useState(false);
   const zsdRef = useRef<HTMLInputElement>(null);
 
   // Master Gudang state
@@ -59,6 +146,7 @@ export function UploadSAPForm() {
   const [masterLoading, setMasterLoading] = useState(false);
   const [masterResult, setMasterResult] = useState<{message: string, warehouses_count: number, plants_count: number} | null>(null);
   const [masterError, setMasterError] = useState<string | null>(null);
+  const [masterProgress, setMasterProgress] = useState(0);
   const masterRef = useRef<HTMLInputElement>(null);
 
   // Photo Upload state
@@ -68,6 +156,7 @@ export function UploadSAPForm() {
   const [photoLoading, setPhotoLoading] = useState(false);
   const [photoResult, setPhotoResult] = useState<{message: string, url: string} | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoProgress, setPhotoProgress] = useState(0);
   const photoRef = useRef<HTMLInputElement>(null);
   const [gudangList, setGudangList] = useState<{id: number, nama_gudang: string, kota: string, kode_plants: string[]}[]>([]);
 
@@ -76,6 +165,7 @@ export function UploadSAPForm() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResults, setBulkResults] = useState<BulkUploadResult[] | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkProgress, setBulkProgress] = useState(0);
   const bulkRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -93,27 +183,29 @@ export function UploadSAPForm() {
     setLoading: (v: boolean) => void,
     setResult: (v: UploadResult | null) => void,
     setError: (v: string | null) => void,
+    setProgress: SetProgress,
   ) => {
     setLoading(true);
     setResult(null);
     setError(null);
+    setProgress(0);
 
     const formData = new FormData();
     formData.append("file", file);
     formData.append("tanggal", tanggal);
+    const progress = createUploadProgressController(setProgress);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/stocks/upload/${type}`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || "Upload gagal");
-      }
+      const data = await uploadWithProgress<UploadResult>(
+        `${API_BASE_URL}/api/stocks/upload/${type}`,
+        formData,
+        progress.onProgress
+      );
+      progress.finish();
       setResult(data);
     } catch (err: unknown) {
       setError((err as Error).message || "Terjadi kesalahan saat mengupload file.");
+      progress.reset();
     } finally {
       setLoading(false);
     }
@@ -122,34 +214,41 @@ export function UploadSAPForm() {
   const handleDryRun = async (
     type: "mb52" | "zsd-sodo",
     file: File,
+    setLoading: (v: boolean) => void,
     setResult: (v: UploadDryRunResult | null) => void,
     setError: (v: string | null) => void,
+    setProgress: SetProgress,
   ) => {
+    setLoading(true);
     setError(null);
     setResult(null);
+    setProgress(0);
 
     const formData = new FormData();
     formData.append("file", file);
     formData.append("tanggal", tanggal);
+    const progress = createUploadProgressController(setProgress);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/stocks/upload/${type}/dry-run`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || "Preview validasi gagal");
-      }
+      const data = await uploadWithProgress<UploadDryRunResult>(
+        `${API_BASE_URL}/api/stocks/upload/${type}/dry-run`,
+        formData,
+        progress.onProgress
+      );
+      progress.finish();
       setResult(data);
     } catch (err: unknown) {
       setError((err as Error).message || "Terjadi kesalahan saat preview validasi.");
+      progress.reset();
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDrop = (
     e: React.DragEvent,
     setFile: (f: File) => void,
+    afterSetFile?: () => void,
     acceptsCsv: boolean = false
   ) => {
     e.preventDefault();
@@ -158,6 +257,7 @@ export function UploadSAPForm() {
       if ((!acceptsCsv && (file.name.endsWith(".xlsx") || file.name.endsWith(".xls"))) ||
           (acceptsCsv && file.name.endsWith(".csv"))) {
         setFile(file);
+        afterSetFile?.();
       }
     }
   };
@@ -167,22 +267,23 @@ export function UploadSAPForm() {
     setMasterLoading(true);
     setMasterResult(null);
     setMasterError(null);
+    setMasterProgress(0);
 
     const formData = new FormData();
     formData.append("file", masterFile);
+    const progress = createUploadProgressController(setMasterProgress);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/master-data/upload`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || "Upload gagal");
-      }
+      const data = await uploadWithProgress<{message: string, warehouses_count: number, plants_count: number}>(
+        `${API_BASE_URL}/api/master-data/upload`,
+        formData,
+        progress.onProgress
+      );
+      progress.finish();
       setMasterResult(data);
     } catch (err: unknown) {
       setMasterError((err as Error).message || "Terjadi kesalahan saat mengupload file master.");
+      progress.reset();
     } finally {
       setMasterLoading(false);
     }
@@ -196,26 +297,27 @@ export function UploadSAPForm() {
     setPhotoLoading(true);
     setPhotoResult(null);
     setPhotoError(null);
+    setPhotoProgress(0);
 
     const formData = new FormData();
     formData.append("file", photoFile);
     formData.append("gudang_id", photoGudangId);
     formData.append("tanggal", tanggal);
     formData.append("kamera_id", photoKameraId);
+    const progress = createUploadProgressController(setPhotoProgress);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/photos/upload`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || "Upload gagal");
-      }
+      const data = await uploadWithProgress<{message: string, url: string}>(
+        `${API_BASE_URL}/api/photos/upload`,
+        formData,
+        progress.onProgress
+      );
+      progress.finish();
       setPhotoResult(data);
       setPhotoFile(null);
     } catch (err: unknown) {
       setPhotoError((err as Error).message || "Terjadi kesalahan saat mengupload foto.");
+      progress.reset();
     } finally {
       setPhotoLoading(false);
     }
@@ -278,26 +380,27 @@ export function UploadSAPForm() {
     setBulkLoading(true);
     setBulkError(null);
     setBulkResults(null);
+    setBulkProgress(0);
     
     const formData = new FormData();
     bulkFiles.forEach(file => {
       formData.append("files", file);
     });
     formData.append("default_tanggal", tanggal);
+    const progress = createUploadProgressController(setBulkProgress);
     
     try {
-      const res = await fetch(`${API_BASE_URL}/api/photos/bulk-upload`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || "Bulk Upload gagal");
-      }
+      const data = await uploadWithProgress<{message: string, results: BulkUploadResult[]}>(
+        `${API_BASE_URL}/api/photos/bulk-upload`,
+        formData,
+        progress.onProgress
+      );
+      progress.finish();
       setBulkResults(data.results);
       setBulkFiles([]);
     } catch (err: unknown) {
       setBulkError((err as Error).message || "Terjadi kesalahan saat mengunggah foto secara massal.");
+      progress.reset();
     } finally {
       setBulkLoading(false);
     }
@@ -337,6 +440,7 @@ export function UploadSAPForm() {
               setMb52File(e.target.files[0]);
               setMb52DryRun(null);
               setMb52Error(null);
+              setMb52Progress(0);
             }
           }}
         />
@@ -344,7 +448,11 @@ export function UploadSAPForm() {
         <div
           onClick={() => mb52Ref.current?.click()}
           onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => handleDrop(e, setMb52File)}
+          onDrop={(e) => handleDrop(e, setMb52File, () => {
+            setMb52DryRun(null);
+            setMb52Error(null);
+            setMb52Progress(0);
+          })}
           className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer
             ${mb52File ? "border-pupuk-turquoise bg-emerald-50" : "border-gray-300 hover:bg-gray-50 hover:border-gray-400"}`}
         >
@@ -366,15 +474,16 @@ export function UploadSAPForm() {
         {mb52File && (
           <div className="mt-4 flex flex-wrap gap-2">
             <button
-              onClick={() => handleDryRun("mb52", mb52File, setMb52DryRun, setMb52Error)}
-              disabled={mb52Loading}
-              className="bg-white border border-pupuk-darkBlue text-pupuk-darkBlue px-4 py-2.5 rounded-md font-medium hover:bg-blue-50 transition-colors disabled:opacity-50"
+              onClick={() => handleDryRun("mb52", mb52File, setMb52DryRunLoading, setMb52DryRun, setMb52Error, setMb52Progress)}
+              disabled={mb52Loading || mb52DryRunLoading}
+              className="bg-white border border-pupuk-darkBlue text-pupuk-darkBlue px-4 py-2.5 rounded-md font-medium hover:bg-blue-50 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
-              Preview Validasi MB52
+              {mb52DryRunLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {mb52DryRunLoading ? "Memvalidasi..." : "Preview Validasi MB52"}
             </button>
             <button
-              onClick={() => handleUpload("mb52", mb52File, setMb52Loading, setMb52Result, setMb52Error)}
-              disabled={mb52Loading}
+              onClick={() => handleUpload("mb52", mb52File, setMb52Loading, setMb52Result, setMb52Error, setMb52Progress)}
+              disabled={mb52Loading || mb52DryRunLoading}
               className="bg-pupuk-darkBlue text-white px-6 py-2.5 rounded-md font-medium hover:bg-pupuk-darkBlue/90 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {mb52Loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
@@ -383,6 +492,7 @@ export function UploadSAPForm() {
           </div>
         )}
 
+        <UploadProgressBar progress={mb52Progress} loading={mb52Loading || mb52DryRunLoading} />
         {mb52DryRun && <DryRunBanner result={mb52DryRun} />}
         {mb52Result && <ResultBanner result={mb52Result} />}
         {mb52Error && <ErrorBanner message={mb52Error} />}
@@ -403,6 +513,7 @@ export function UploadSAPForm() {
               setZsdFile(e.target.files[0]);
               setZsdDryRun(null);
               setZsdError(null);
+              setZsdProgress(0);
             }
           }}
         />
@@ -410,7 +521,11 @@ export function UploadSAPForm() {
         <div
           onClick={() => zsdRef.current?.click()}
           onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => handleDrop(e, setZsdFile)}
+          onDrop={(e) => handleDrop(e, setZsdFile, () => {
+            setZsdDryRun(null);
+            setZsdError(null);
+            setZsdProgress(0);
+          })}
           className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer
             ${zsdFile ? "border-pupuk-turquoise bg-emerald-50" : "border-gray-300 hover:bg-gray-50 hover:border-gray-400"}`}
         >
@@ -432,15 +547,16 @@ export function UploadSAPForm() {
         {zsdFile && (
           <div className="mt-4 flex flex-wrap gap-2">
             <button
-              onClick={() => handleDryRun("zsd-sodo", zsdFile, setZsdDryRun, setZsdError)}
-              disabled={zsdLoading}
-              className="bg-white border border-pupuk-darkBlue text-pupuk-darkBlue px-4 py-2.5 rounded-md font-medium hover:bg-blue-50 transition-colors disabled:opacity-50"
+              onClick={() => handleDryRun("zsd-sodo", zsdFile, setZsdDryRunLoading, setZsdDryRun, setZsdError, setZsdProgress)}
+              disabled={zsdLoading || zsdDryRunLoading}
+              className="bg-white border border-pupuk-darkBlue text-pupuk-darkBlue px-4 py-2.5 rounded-md font-medium hover:bg-blue-50 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
-              Preview Validasi ZSD_SODO
+              {zsdDryRunLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {zsdDryRunLoading ? "Memvalidasi..." : "Preview Validasi ZSD_SODO"}
             </button>
             <button
-              onClick={() => handleUpload("zsd-sodo", zsdFile, setZsdLoading, setZsdResult, setZsdError)}
-              disabled={zsdLoading}
+              onClick={() => handleUpload("zsd-sodo", zsdFile, setZsdLoading, setZsdResult, setZsdError, setZsdProgress)}
+              disabled={zsdLoading || zsdDryRunLoading}
               className="bg-pupuk-darkBlue text-white px-6 py-2.5 rounded-md font-medium hover:bg-pupuk-darkBlue/90 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {zsdLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
@@ -449,6 +565,7 @@ export function UploadSAPForm() {
           </div>
         )}
 
+        <UploadProgressBar progress={zsdProgress} loading={zsdLoading || zsdDryRunLoading} />
         {zsdDryRun && <DryRunBanner result={zsdDryRun} />}
         {zsdResult && <ResultBanner result={zsdResult} />}
         {zsdError && <ErrorBanner message={zsdError} />}
@@ -464,13 +581,24 @@ export function UploadSAPForm() {
           type="file"
           accept=".csv"
           className="hidden"
-          onChange={(e) => e.target.files?.[0] && setMasterFile(e.target.files[0])}
+          onChange={(e) => {
+            if (e.target.files?.[0]) {
+              setMasterFile(e.target.files[0]);
+              setMasterError(null);
+              setMasterResult(null);
+              setMasterProgress(0);
+            }
+          }}
         />
 
         <div
           onClick={() => masterRef.current?.click()}
           onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => handleDrop(e, setMasterFile, true)}
+          onDrop={(e) => handleDrop(e, setMasterFile, () => {
+            setMasterError(null);
+            setMasterResult(null);
+            setMasterProgress(0);
+          }, true)}
           className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer
             ${masterFile ? "border-pupuk-turquoise bg-emerald-50" : "border-gray-300 hover:bg-gray-50 hover:border-gray-400"}`}
         >
@@ -500,6 +628,7 @@ export function UploadSAPForm() {
           </button>
         )}
 
+        <UploadProgressBar progress={masterProgress} loading={masterLoading} />
         {masterResult && (
           <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
@@ -550,7 +679,14 @@ export function UploadSAPForm() {
           type="file"
           accept="image/jpeg, image/png, image/jpg"
           className="hidden"
-          onChange={(e) => e.target.files?.[0] && setPhotoFile(e.target.files[0])}
+          onChange={(e) => {
+            if (e.target.files?.[0]) {
+              setPhotoFile(e.target.files[0]);
+              setPhotoError(null);
+              setPhotoResult(null);
+              setPhotoProgress(0);
+            }
+          }}
         />
 
         <div
@@ -559,7 +695,12 @@ export function UploadSAPForm() {
           onDrop={(e) => {
             e.preventDefault();
             const f = e.dataTransfer.files[0];
-            if (f && f.type.startsWith("image/")) setPhotoFile(f);
+            if (f && f.type.startsWith("image/")) {
+              setPhotoFile(f);
+              setPhotoError(null);
+              setPhotoResult(null);
+              setPhotoProgress(0);
+            }
           }}
           className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer
             ${photoFile ? "border-pupuk-turquoise bg-emerald-50/50" : "border-gray-300 hover:bg-gray-50 hover:border-gray-400"}`}
@@ -587,6 +728,7 @@ export function UploadSAPForm() {
           {photoLoading ? "Mengunggah..." : "Upload Foto"}
         </button>
 
+        <UploadProgressBar progress={photoProgress} loading={photoLoading} />
         {photoResult && (
           <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
@@ -629,6 +771,9 @@ export function UploadSAPForm() {
             if (e.target.files) {
               const filesArray = Array.from(e.target.files);
               setBulkFiles(prev => [...prev, ...filesArray]);
+              setBulkError(null);
+              setBulkResults(null);
+              setBulkProgress(0);
             }
           }}
         />
@@ -641,6 +786,9 @@ export function UploadSAPForm() {
             const filesArray = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
             if (filesArray.length > 0) {
               setBulkFiles(prev => [...prev, ...filesArray]);
+              setBulkError(null);
+              setBulkResults(null);
+              setBulkProgress(0);
             }
           }}
           className="border-2 border-dashed border-gray-300 hover:border-pupuk-turquoise hover:bg-gray-50/50 rounded-lg p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer mb-4"
@@ -702,6 +850,7 @@ export function UploadSAPForm() {
           {bulkLoading ? "Mengunggah..." : `Upload ${bulkFiles.length} Foto Massal`}
         </button>
 
+        <UploadProgressBar progress={bulkProgress} loading={bulkLoading} />
         {/* Bulk Upload Results Report */}
         {bulkResults && (
           <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
@@ -768,6 +917,32 @@ function DryRunBanner({ result }: { result: UploadDryRunResult }) {
             <span>Kolom wajib: <b>{result.required_columns.join(", ")}</b></span>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function UploadProgressBar({ progress, loading }: { progress: number; loading: boolean }) {
+  if (!loading && progress === 0) return null;
+
+  const label =
+    progress >= 100
+      ? "Selesai 100%"
+      : progress >= 70
+        ? `Memproses data... ${progress}%`
+        : `Mengunggah ${progress}%`;
+
+  return (
+    <div className="mt-4 border border-blue-100 bg-blue-50 rounded-lg p-3">
+      <div className="flex justify-between text-xs font-medium text-blue-800 mb-2">
+        <span>{label}</span>
+        <span>{progress}%</span>
+      </div>
+      <div className="h-2 bg-white rounded-full overflow-hidden border border-blue-100">
+        <div
+          className="h-full bg-pupuk-turquoise transition-all duration-200"
+          style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+        />
       </div>
     </div>
   );
