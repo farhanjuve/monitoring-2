@@ -5,6 +5,10 @@ import { useParams } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 import { ArrowLeft, PackageOpen, Camera } from "lucide-react";
 import Link from "next/link";
+import {
+  UploadCompletenessBanner,
+  type UploadCompletenessStatus,
+} from "@/components/dashboard/UploadCompletenessBanner";
 
 interface GudangData {
   id: number;
@@ -54,6 +58,7 @@ export default function GudangDetailPage() {
   const [photos, setPhotos] = useState<PhotoData[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoData | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
+  const [uploadStatus, setUploadStatus] = useState<UploadCompletenessStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -81,6 +86,8 @@ export default function GudangDetailPage() {
             fetch(`${API_BASE_URL}/api/stocks/?tanggal=${selectedDate}`).then((res) => res.json()),
             fetch(`${API_BASE_URL}/api/photos/gallery?tanggal=${selectedDate}`).then((res) => res.json()),
           ]);
+          const statusRes = await fetch(`${API_BASE_URL}/api/stocks/upload-status?tanggal=${selectedDate}`);
+          setUploadStatus(statusRes.ok ? await statusRes.json() : null);
 
           const allStocks: StockCalc[] = Array.isArray(allStocksRes) ? allStocksRes : [];
           const galleryItems: Array<{ gudang_id: number; photos: string[] }> = Array.isArray(galleryRes) ? galleryRes : [];
@@ -106,6 +113,7 @@ export default function GudangDetailPage() {
         } catch (recErr) {
           console.error(recErr);
           setRecommendations([]);
+          setUploadStatus(null);
         }
 
         setLoading(false);
@@ -146,6 +154,8 @@ export default function GudangDetailPage() {
           </p>
         </div>
       </div>
+
+      <UploadCompletenessBanner status={uploadStatus} compact />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* CCTV Section */}

@@ -7,6 +7,11 @@ import { StockSummaryCards } from "@/components/dashboard/StockSummaryCards";
 import { StockTable, type StockCalc } from "@/components/dashboard/StockTable";
 import { MapDashboard } from "@/components/dashboard/MapDashboard";
 import { UnmappedPlantsBanner } from "@/components/dashboard/UnmappedPlantsBanner";
+import {
+  UploadCompletenessBadge,
+  UploadCompletenessBanner,
+  type UploadCompletenessStatus,
+} from "@/components/dashboard/UploadCompletenessBanner";
 import { API_BASE_URL } from "@/lib/api";
 
 const PUPUK_OPTIONS = ["Semua", "Urea", "NPK", "ZA", "SP-36", "Organik"];
@@ -30,8 +35,10 @@ export default function Home() {
   const [searchGudang, setSearchGudang] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("");
   const [rawData, setRawData] = useState<StockCalc[]>([]);
+  const [uploadStatus, setUploadStatus] = useState<UploadCompletenessStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const cacheRef = useRef<Record<string, StockCalc[]>>({});
+  const uploadStatusCacheRef = useRef<Record<string, UploadCompletenessStatus>>({});
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -107,6 +114,33 @@ export default function Home() {
     loadByDate();
   }, [tanggal, latestDateStr]);
 
+  useEffect(() => {
+    const selectedDate = tanggal || latestDateStr || "";
+    if (!selectedDate) return;
+
+    const cached = uploadStatusCacheRef.current[selectedDate];
+    if (cached) {
+      setUploadStatus(cached);
+      return;
+    }
+
+    const loadUploadStatus = async () => {
+      setUploadStatus(null);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/stocks/upload-status?tanggal=${selectedDate}`);
+        if (!res.ok) throw new Error("Gagal mengambil status upload SAP.");
+        const data = await res.json();
+        uploadStatusCacheRef.current[selectedDate] = data;
+        setUploadStatus(data);
+      } catch (e) {
+        console.error(e);
+        setUploadStatus(null);
+      }
+    };
+
+    loadUploadStatus();
+  }, [tanggal, latestDateStr]);
+
   const mapData = useMemo(() => {
     const needle = searchGudang.trim().toLowerCase();
     return rawData.filter((row) => {
@@ -153,7 +187,10 @@ export default function Home() {
           <h1 className="text-3xl font-bold text-pupuk-darkBlue dark:text-pupuk-turquoise mb-1">Dashboard Stok Gudang</h1>
           <p className="text-muted-foreground">Ringkasan data stok fisik dan SAP terbaru.</p>
         </div>
-        <div className="text-sm bg-blue-50 text-pupuk-blue px-4 py-2 rounded-md font-medium">Update Terakhir: {displayDate}</div>
+        <div className="flex flex-col items-end gap-2">
+          <div className="text-sm bg-blue-50 text-pupuk-blue px-4 py-2 rounded-md font-medium">Update Terakhir: {displayDate}</div>
+          <UploadCompletenessBadge status={uploadStatus} />
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 mb-6 flex flex-wrap gap-4 items-end">
@@ -200,6 +237,10 @@ export default function Home() {
             </button>
           </div>
         )}
+      </div>
+
+      <div className="mb-6">
+        <UploadCompletenessBanner status={uploadStatus} />
       </div>
 
       <UnmappedPlantsBanner />

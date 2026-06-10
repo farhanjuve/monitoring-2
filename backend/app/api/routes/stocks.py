@@ -267,6 +267,62 @@ def recalculate_stocks(
 
 # ==================== Upload History ====================
 
+def _upload_status_payload(upload: Optional[SAPUpload]):
+    return {
+        "uploaded": upload is not None,
+        "latest_upload_at": upload.created_at.isoformat() if upload and upload.created_at else None,
+        "filename": upload.filename if upload else None,
+        "rows": upload.jumlah_baris if upload else 0,
+    }
+
+
+@router.get("/upload-status")
+def get_upload_status(
+    tanggal: date,
+    db: Session = Depends(get_db),
+):
+    """Cek kelengkapan upload MB52 dan ZSD_SODO untuk satu tanggal data."""
+    uploads = (
+        db.query(SAPUpload)
+        .filter(
+            SAPUpload.tanggal_data == tanggal,
+            SAPUpload.status == "success",
+            SAPUpload.jenis_file.in_(["MB52", "ZSD_SODO"]),
+        )
+        .order_by(SAPUpload.created_at.desc())
+        .all()
+    )
+
+    latest_by_type: dict[str, SAPUpload] = {}
+    for upload in uploads:
+        if upload.jenis_file not in latest_by_type:
+            latest_by_type[upload.jenis_file] = upload
+
+    mb52 = latest_by_type.get("MB52")
+    zsd_sodo = latest_by_type.get("ZSD_SODO")
+    missing = []
+    if not mb52:
+        missing.append("MB52")
+    if not zsd_sodo:
+        missing.append("ZSD_SODO")
+
+    if not missing:
+        message = "Data lengkap: MB52 dan ZSD_SODO sudah diupload."
+    elif len(missing) == 2:
+        message = "Belum ada upload MB52 dan ZSD_SODO untuk tanggal ini."
+    else:
+        message = f"Data belum lengkap: {missing[0]} belum diupload."
+
+    return {
+        "tanggal": tanggal.isoformat(),
+        "complete": len(missing) == 0,
+        "mb52": _upload_status_payload(mb52),
+        "zsd_sodo": _upload_status_payload(zsd_sodo),
+        "missing": missing,
+        "message": message,
+    }
+
+
 @router.get("/uploads", response_model=List[SAPUploadOut])
 def get_upload_history(
     db: Session = Depends(get_db),

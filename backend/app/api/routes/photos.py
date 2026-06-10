@@ -16,8 +16,22 @@ router = APIRouter()
 LOCAL_STORAGE_DIR = os.path.join(os.getcwd(), "storage", "mock-storage")
 
 def get_s3_client():
-    if not settings.R2_ACCOUNT_ID or not settings.R2_ACCESS_KEY_ID:
-        return None
+    missing_config = [
+        name for name, value in {
+            "R2_ACCOUNT_ID": settings.R2_ACCOUNT_ID,
+            "R2_ACCESS_KEY_ID": settings.R2_ACCESS_KEY_ID,
+            "R2_SECRET_ACCESS_KEY": settings.R2_SECRET_ACCESS_KEY,
+            "R2_BUCKET_NAME": settings.R2_BUCKET_NAME,
+        }.items()
+        if not value
+    ]
+    if missing_config:
+        if settings.ALLOW_LOCAL_PHOTO_STORAGE:
+            return None
+        raise HTTPException(
+            status_code=500,
+            detail=f"Konfigurasi Cloudflare R2 belum lengkap: {', '.join(missing_config)}",
+        )
     
     endpoint_url = f"https://{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
     return boto3.client(
@@ -84,7 +98,7 @@ async def upload_photo(
         except ClientError as e:
             raise HTTPException(status_code=500, detail=f"Gagal mengunggah ke R2: {str(e)}")
     else:
-        # Simpan lokal bila R2 belum dikonfigurasi.
+        # Fallback lokal hanya untuk development jika ALLOW_LOCAL_PHOTO_STORAGE=true.
         file_url = save_locally(file, unique_filename)
 
     # Hitung file_size_kb
