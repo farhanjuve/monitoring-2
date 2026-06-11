@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, Clock3 } from "lucide-react";
+import { formatJakartaDateTime } from "@/lib/time";
 
 interface UploadFileStatus {
   uploaded: boolean;
@@ -16,17 +17,6 @@ export interface UploadCompletenessStatus {
   zsd_sodo: UploadFileStatus;
   missing: string[];
   message: string;
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function statusTone(status: UploadCompletenessStatus) {
@@ -70,7 +60,7 @@ function FilePill({ label, file }: { label: string; file: UploadFileStatus }) {
       </div>
       {file.uploaded && (
         <p className="mt-1 text-[11px] opacity-80">
-          {file.filename || "-"} | {file.rows.toLocaleString("id-ID")} baris | {formatDateTime(file.latest_upload_at)}
+          {file.filename || "-"} | {file.rows.toLocaleString("id-ID")} baris | {formatJakartaDateTime(file.latest_upload_at)}
         </p>
       )}
     </div>

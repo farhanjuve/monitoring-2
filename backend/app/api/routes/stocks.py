@@ -14,6 +14,7 @@ from datetime import date
 from typing import List, Optional
 
 from app.core.database import get_db
+from app.core.time import to_utc_iso
 from app.models.models import StockCalculation, SAPUpload
 from app.schemas.schemas import StockCalculationOut, StockPreview, SAPUploadOut, UploadResponse
 from app.services.sap_parser import parse_mb52, parse_zsd_sodo, preview_mb52, preview_zsd_sodo
@@ -270,7 +271,7 @@ def recalculate_stocks(
 def _upload_status_payload(upload: Optional[SAPUpload]):
     return {
         "uploaded": upload is not None,
-        "latest_upload_at": upload.created_at.isoformat() if upload and upload.created_at else None,
+        "latest_upload_at": to_utc_iso(upload.created_at) if upload and upload.created_at else None,
         "filename": upload.filename if upload else None,
         "rows": upload.jumlah_baris if upload else 0,
     }

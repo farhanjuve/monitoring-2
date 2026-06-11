@@ -1,6 +1,8 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_serializer
 from datetime import datetime, date
 from typing import Optional
+
+from app.core.time import to_utc_iso
 
 class Token(BaseModel):
     access_token: str
@@ -19,6 +21,10 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime):
+        return to_utc_iso(value)
 
     class Config:
         from_attributes = True
@@ -45,6 +51,10 @@ class StockCalculationOut(BaseModel):
     stok_admin: float
     calculated_at: Optional[datetime] = None
 
+    @field_serializer("calculated_at")
+    def serialize_calculated_at(self, value: datetime | None):
+        return to_utc_iso(value)
+
     class Config:
         from_attributes = True
 
@@ -64,6 +74,10 @@ class SAPUploadOut(BaseModel):
     status: str
     error_message: Optional[str] = None
     created_at: Optional[datetime] = None
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime | None):
+        return to_utc_iso(value)
 
     class Config:
         from_attributes = True

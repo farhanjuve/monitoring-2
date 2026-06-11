@@ -1,6 +1,6 @@
-import uuid
 import os
 import re
+import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from typing import List
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.time import to_utc_iso, utc_now
 from app.models.models import Photo, Warehouse, WarehousePlant
 
 router = APIRouter()
@@ -120,7 +121,7 @@ async def upload_photo(
         existing_photo.r2_key = unique_filename
         existing_photo.r2_url = file_url
         existing_photo.file_size_kb = file_size_kb
-        existing_photo.uploaded_at = datetime.now()
+        existing_photo.uploaded_at = utc_now()
         photo_record = existing_photo
     else:
         photo_record = Photo(
@@ -131,7 +132,7 @@ async def upload_photo(
             r2_url=file_url,
             feed_number=feed_number,
             file_size_kb=file_size_kb,
-            uploaded_at=datetime.now()
+            uploaded_at=utc_now()
         )
         db.add(photo_record)
     
@@ -158,7 +159,7 @@ def get_photos(gudang_id: int, tanggal: str | None = None, db: Session = Depends
         {
             "id": p.id,
             "tanggal": str(p.tanggal),
-            "waktu_jepret": p.uploaded_at.isoformat() if p.uploaded_at else datetime.now().isoformat(),
+            "waktu_jepret": to_utc_iso(p.uploaded_at) or utc_now().isoformat(),
             "kamera_id": "CCTV Pintu Depan" if p.feed_number == 1 else "CCTV Dalam Area Stok",
             "url": p.r2_url
         }
@@ -168,7 +169,7 @@ def get_photos(gudang_id: int, tanggal: str | None = None, db: Session = Depends
 @router.get("/gallery")
 def get_gallery(tanggal: str | None = None, db: Session = Depends(get_db)):
     """Ambil galeri grouped per gudang, default untuk tanggal hari ini."""
-    selected_date = tanggal or datetime.now().strftime("%Y-%m-%d")
+    selected_date = tanggal or utc_now().date().isoformat()
     photos = db.query(Photo).filter(Photo.tanggal == selected_date).order_by(Photo.gudang_id.asc(), Photo.feed_number.asc(), Photo.uploaded_at.desc()).all()
 
     grouped: dict[int, dict] = {}
@@ -331,7 +332,7 @@ async def bulk_upload_photos(
             existing_photo.r2_key = unique_filename
             existing_photo.r2_url = file_url
             existing_photo.file_size_kb = file_size_kb
-            existing_photo.uploaded_at = datetime.now()
+            existing_photo.uploaded_at = utc_now()
         else:
             new_photo = Photo(
                 gudang_id=gudang_id,
@@ -341,7 +342,7 @@ async def bulk_upload_photos(
                 r2_url=file_url,
                 feed_number=feed_number,
                 file_size_kb=file_size_kb,
-                uploaded_at=datetime.now()
+                uploaded_at=utc_now()
             )
             db.add(new_photo)
             
