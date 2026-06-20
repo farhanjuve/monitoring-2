@@ -63,7 +63,7 @@ def calculate_daily_stock(db: Session, tanggal: date, gudang_id: int, jenis_pupu
     }
 
 
-def update_stock_calculation(db: Session, tanggal: date, gudang_id: int, jenis_pupuk: str) -> StockCalculation:
+def update_stock_calculation(db: Session, tanggal: date, gudang_id: int, jenis_pupuk: str, commit: bool = True) -> StockCalculation:
     """Hitung dan simpan/update hasil kalkulasi stok ke database."""
     
     calc_data = calculate_daily_stock(db, tanggal, gudang_id, jenis_pupuk)
@@ -90,8 +90,9 @@ def update_stock_calculation(db: Session, tanggal: date, gudang_id: int, jenis_p
         )
         db.add(record)
 
-    db.commit()
-    db.refresh(record)
+    if commit:
+        db.commit()
+        db.refresh(record)
     return record
 
 
@@ -100,39 +101,94 @@ def recalculate_all_for_date(db: Session, tanggal: date) -> List[Dict[str, Any]]
     Hitung ulang stok untuk SEMUA gudang dan jenis pupuk pada tanggal tertentu.
     Dipanggil setelah upload file baru.
     """
-    # Cari semua kombinasi unik (gudang_id, jenis_pupuk) yang ada di data SAP hari itu
-    mb52_combos = db.query(WarehousePlant.gudang_id, SAPStock.jenis_pupuk).join(
+    # 1. Ambil data MB52 (stok fisik & intransit) dikelompokkan berdasarkan gudang_id dan jenis_pupuk
+    mb52_data = db.query(
+        WarehousePlant.gudang_id,
+        SAPStock.jenis_pupuk,
+        func.coalesce(func.sum(SAPStock.unrestricted), 0.0),
+        func.coalesce(func.sum(SAPStock.intransit), 0.0)
+    ).join(
         SAPStock, WarehousePlant.kode_plant == SAPStock.kode_plant
     ).filter(
         SAPStock.tanggal == tanggal
-    ).distinct().all()
+    ).group_by(
+        WarehousePlant.gudang_id,
+        SAPStock.jenis_pupuk
+    ).all()
     
-    do_combos = db.query(WarehousePlant.gudang_id, SAPOutstandingDO.jenis_pupuk).join(
+    # 2. Ambil data Outstanding DO dikelompokkan berdasarkan gudang_id dan jenis_pupuk
+    do_data = db.query(
+        WarehousePlant.gudang_id,
+        SAPOutstandingDO.jenis_pupuk,
+        func.coalesce(func.sum(SAPOutstandingDO.outstanding_qty), 0.0)
+    ).join(
         SAPOutstandingDO, WarehousePlant.kode_plant == SAPOutstandingDO.kode_plant
     ).filter(
         SAPOutstandingDO.tanggal == tanggal
-    ).distinct().all()
+    ).group_by(
+        WarehousePlant.gudang_id,
+        SAPOutstandingDO.jenis_pupuk
+    ).all()
     
-    # Gabungkan semua kombinasi unik
-    combos = set()
-    for row in mb52_combos:
-        combos.add((row[0], row[1]))
-    for row in do_combos:
-        combos.add((row[0], row[1]))
+    # 3. Gabungkan hasil di memori python
+    combos = {}
+    for gudang_id, jenis_pupuk, fisik, intransit in mb52_data:
+        combos[(gudang_id, jenis_pupuk)] = {
+            "stok_fisik": float(fisik),
+            "intransit": float(intransit),
+            "outstanding_so": 0.0
+        }
+        
+    for gudang_id, jenis_pupuk, outstanding in do_data:
+        if (gudang_id, jenis_pupuk) not in combos:
+            combos[(gudang_id, jenis_pupuk)] = {
+                "stok_fisik": 0.0,
+                "intransit": 0.0,
+                "outstanding_so": float(outstanding)
+            }
+        else:
+            combos[(gudang_id, jenis_pupuk)]["outstanding_so"] = float(outstanding)
+            
+    # 4. Ambil semua data StockCalculation yang sudah ada untuk tanggal ini dalam satu kueri
+    existing_records = db.query(StockCalculation).filter(StockCalculation.tanggal == tanggal).all()
+    record_map = {(r.gudang_id, r.tipe_pupuk): r for r in existing_records}
     
     results = []
-    for gudang_id, jenis_pupuk in combos:
-        record = update_stock_calculation(db, tanggal, gudang_id, jenis_pupuk)
+    for (gudang_id, jenis_pupuk), data in combos.items():
+        stok_admin_tanpa_intransit = data["stok_fisik"] - data["outstanding_so"]
+        stok_admin = stok_admin_tanpa_intransit + data["intransit"]
+        
+        calc_data = {
+            "stok_fisik": round(data["stok_fisik"], 2),
+            "outstanding_so": round(data["outstanding_so"], 2),
+            "stok_admin_tanpa_intransit": round(stok_admin_tanpa_intransit, 2),
+            "intransit": round(data["intransit"], 2),
+            "stok_admin": round(stok_admin, 2),
+        }
+        
+        record = record_map.get((gudang_id, jenis_pupuk))
+        if record:
+            record.stok_fisik = calc_data["stok_fisik"]
+            record.outstanding_so = calc_data["outstanding_so"]
+            record.stok_admin_tanpa_intransit = calc_data["stok_admin_tanpa_intransit"]
+            record.intransit = calc_data["intransit"]
+            record.stok_admin = calc_data["stok_admin"]
+        else:
+            record = StockCalculation(
+                tanggal=tanggal,
+                gudang_id=gudang_id,
+                tipe_pupuk=jenis_pupuk,
+                **calc_data
+            )
+            db.add(record)
+            
         results.append({
             "gudang_id": gudang_id,
             "tipe_pupuk": jenis_pupuk,
-            "stok_fisik": record.stok_fisik,
-            "outstanding_so": record.outstanding_so,
-            "stok_admin_tanpa_intransit": record.stok_admin_tanpa_intransit,
-            "intransit": record.intransit,
-            "stok_admin": record.stok_admin,
+            **calc_data
         })
-    
+        
+    db.commit()
     return results
 
 

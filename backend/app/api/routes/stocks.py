@@ -8,14 +8,18 @@ Endpoints untuk:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import date
 from typing import List, Optional
+import io
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 from app.core.database import get_db
 from app.core.time import to_utc_iso
-from app.models.models import StockCalculation, SAPUpload
+from app.models.models import StockCalculation, SAPUpload, Warehouse, WarehousePlant
 from app.schemas.schemas import StockCalculationOut, StockPreview, SAPUploadOut, UploadResponse
 from app.services.sap_parser import parse_mb52, parse_zsd_sodo, preview_mb52, preview_zsd_sodo
 from app.services.stock_calculator import (
@@ -337,3 +341,276 @@ def get_upload_history(
         query = query.filter(SAPUpload.jenis_file == jenis_file)
     
     return query.all()
+
+
+PROVINCE_MAPPING = {
+    # Sumatera (termasuk Lampung)
+    "aceh": "Sumatera",
+    "sumatera utara": "Sumatera",
+    "sumatera barat": "Sumatera",
+    "riau": "Sumatera",
+    "kepulauan riau": "Sumatera",
+    "jambi": "Sumatera",
+    "bengkulu": "Sumatera",
+    "sumatera selatan": "Sumatera",
+    "kepulauan bangka belitung": "Sumatera",
+    "bangka belitung": "Sumatera",
+    "lampung": "Sumatera",
+    
+    # Jawa
+    "banten": "Jawa",
+    "dki jakarta": "Jawa",
+    "dki": "Jawa",
+    "jakarta": "Jawa",
+    "jawa barat": "Jawa",
+    "jawa tengah": "Jawa",
+    "di yogyakarta": "Jawa",
+    "yogyakarta": "Jawa",
+    "jawa timur": "Jawa",
+    
+    # Bali & Nusa Tenggara
+    "bali": "Bali & NT",
+    "nusa tenggara barat": "Bali & NT",
+    "ntb": "Bali & NT",
+    "nusa tenggara timur": "Bali & NT",
+    "ntt": "Bali & NT",
+    
+    # Kalimantan
+    "kalimantan barat": "Kalimantan",
+    "kalimantan tengah": "Kalimantan",
+    "kalimantan selatan": "Kalimantan",
+    "kalimantan timur": "Kalimantan",
+    "kalimantan utara": "Kalimantan",
+}
+
+def get_area_for_province(province: str) -> str:
+    if not province:
+        return "Sulamapa"
+    prov_lower = province.strip().lower()
+    for key, area in PROVINCE_MAPPING.items():
+        if key in prov_lower:
+            return area
+    return "Sulamapa"
+
+@router.get("/export-excel")
+def export_excel(
+    tanggal: date,
+    db: Session = Depends(get_db),
+):
+    # Fetch all active warehouses
+    warehouses = db.query(Warehouse).filter(Warehouse.is_active == True).all()
+    
+    # Fetch all calculations for the target date
+    calcs = db.query(StockCalculation).filter(StockCalculation.tanggal == tanggal).all()
+    
+    # Map calculations for fast lookup: (gudang_id, tipe_pupuk) -> calculation
+    calc_map = {}
+    for c in calcs:
+        calc_map[(c.gudang_id, c.tipe_pupuk)] = c
+
+    # Areas defined by user
+    areas = ["Sumatera", "Jawa", "Bali & NT", "Kalimantan", "Sulamapa"]
+    fertilizers = ["Urea", "NPK"]
+
+    wb = Workbook()
+    
+    # Remove default sheet
+    default_sheet = wb.active
+    if default_sheet:
+        wb.remove(default_sheet)
+
+    # Styles
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    bold_font = Font(name="Calibri", size=11, bold=True)
+    regular_font = Font(name="Calibri", size=11)
+    
+    thin_border = Border(
+        left=Side(style='thin', color='D9D9D9'),
+        right=Side(style='thin', color='D9D9D9'),
+        top=Side(style='thin', color='D9D9D9'),
+        bottom=Side(style='thin', color='D9D9D9')
+    )
+    
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left_align = Alignment(horizontal="left", vertical="center")
+    right_align = Alignment(horizontal="right", vertical="center")
+    center_align = Alignment(horizontal="center", vertical="center")
+
+    headers = [
+        "Kabupaten / Kota",
+        "Kode Plant",
+        "Nama Gudang",
+        "Stok Fisik",
+        "Outstanding SO",
+        "Stok Admin (Tanpa Intransit)",
+        "Intransit",
+        "Stok Admin"
+    ]
+
+    for area in areas:
+        for fert in fertilizers:
+            # Filter warehouses in this area
+            area_warehouses = []
+            for w in warehouses:
+                w_area = get_area_for_province(w.provinsi)
+                if w_area == area:
+                    area_warehouses.append(w)
+            
+            # Group by province -> city/kabupaten
+            prov_groups = {}
+            for w in area_warehouses:
+                prov = (w.provinsi or "TIDAK DIKETAHUI").strip().upper()
+                city = (w.kota or "TIDAK DIKETAHUI").strip().upper()
+                if prov not in prov_groups:
+                    prov_groups[prov] = {}
+                if city not in prov_groups[prov]:
+                    prov_groups[prov][city] = []
+                prov_groups[prov][city].append(w)
+
+            # Sort provinces by minimum province code (first 2 digits of kode_kab)
+            def get_province_sort_key(prov_name):
+                all_w = []
+                for city in prov_groups[prov_name].values():
+                    all_w.extend(city)
+                codes = []
+                for w in all_w:
+                    if w.kode_kab:
+                        try:
+                            codes.append(int(w.kode_kab) // 100)
+                        except (ValueError, TypeError):
+                            pass
+                return min(codes) if codes else 99
+
+            sorted_provinces = sorted(prov_groups.keys(), key=lambda p: (get_province_sort_key(p), p))
+
+            # Sheet name
+            sheet_title = f"{area} - {fert}"
+            ws = wb.create_sheet(title=sheet_title)
+            
+            # Show grid lines
+            ws.views.sheetView[0].showGridLines = True
+
+            # Write Title
+            ws.cell(row=1, column=1, value=f"LAPORAN HARIAN STOK {fert.upper()} - WILAYAH {area.upper()}").font = Font(name="Calibri", size=14, bold=True)
+            ws.cell(row=2, column=1, value=f"Tanggal: {tanggal.strftime('%d %B %Y')}").font = Font(name="Calibri", size=11, italic=True)
+            
+            # Write Headers
+            for col_idx, h in enumerate(headers, 1):
+                cell = ws.cell(row=4, column=col_idx, value=h)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_align
+                cell.border = thin_border
+            
+            ws.row_dimensions[4].height = 28
+            
+            current_row = 5
+            total_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+            total_font = Font(name="Calibri", size=11, bold=True)
+
+            for prov in sorted_provinces:
+                # Accumulators for province totals
+                prov_stok_fisik = 0.0
+                prov_outstanding_so = 0.0
+                prov_stok_admin_tanpa_intransit = 0.0
+                prov_intransit = 0.0
+                prov_stok_admin = 0.0
+
+                sorted_cities = sorted(prov_groups[prov].keys())
+                for city in sorted_cities:
+                    gudangs = sorted(prov_groups[prov][city], key=lambda x: (x.nama_gudang or "").lower())
+                    start_row = current_row
+                    
+                    for w in gudangs:
+                        # Fetch calculation
+                        calc = calc_map.get((w.id, fert))
+                        stok_fisik = calc.stok_fisik if calc else 0.0
+                        outstanding_so = calc.outstanding_so if calc else 0.0
+                        stok_admin_tanpa_intransit = calc.stok_admin_tanpa_intransit if calc else 0.0
+                        intransit = calc.intransit if calc else 0.0
+                        stok_admin = calc.stok_admin if calc else 0.0
+                        
+                        # Add to province totals
+                        prov_stok_fisik += stok_fisik
+                        prov_outstanding_so += outstanding_so
+                        prov_stok_admin_tanpa_intransit += stok_admin_tanpa_intransit
+                        prov_intransit += intransit
+                        prov_stok_admin += stok_admin
+
+                        kode_plants = "/".join(sorted([p.kode_plant for p in w.plants]))
+                        
+                        ws.cell(row=current_row, column=1, value=city).alignment = center_align
+                        ws.cell(row=current_row, column=2, value=kode_plants).alignment = center_align
+                        ws.cell(row=current_row, column=3, value=w.nama_gudang).alignment = left_align
+                        
+                        # Numeric values
+                        for col_idx, val in enumerate([stok_fisik, outstanding_so, stok_admin_tanpa_intransit, intransit, stok_admin], 4):
+                            cell = ws.cell(row=current_row, column=col_idx, value=val)
+                            cell.alignment = right_align
+                            cell.number_format = '#,##0.00'
+                        
+                        # Apply font & border to row
+                        for col_idx in range(1, 9):
+                            cell = ws.cell(row=current_row, column=col_idx)
+                            cell.font = regular_font
+                            cell.border = thin_border
+                        
+                        current_row += 1
+                    
+                    end_row = current_row - 1
+                    if end_row >= start_row:
+                        if end_row > start_row:
+                            ws.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
+                        # Force center alignment on merged area
+                        ws.cell(row=start_row, column=1).alignment = center_align
+
+                # Write Province Total Row
+                ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=3)
+                total_label_cell = ws.cell(row=current_row, column=1, value=f"Total Stok Provinsi {prov.title()}")
+                total_label_cell.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+                
+                # Write sums
+                ws.cell(row=current_row, column=4, value=prov_stok_fisik)
+                ws.cell(row=current_row, column=5, value=prov_outstanding_so)
+                ws.cell(row=current_row, column=6, value=prov_stok_admin_tanpa_intransit)
+                ws.cell(row=current_row, column=7, value=prov_intransit)
+                ws.cell(row=current_row, column=8, value=prov_stok_admin)
+
+                # Format total row
+                ws.row_dimensions[current_row].height = 22
+                for col_idx in range(1, 9):
+                    cell = ws.cell(row=current_row, column=col_idx)
+                    cell.font = total_font
+                    cell.fill = total_fill
+                    cell.border = thin_border
+                    if col_idx >= 4:
+                        cell.alignment = right_align
+                        cell.number_format = '#,##0.00'
+                
+                current_row += 1
+
+            # Auto-fit columns
+            for col in ws.columns:
+                max_len = 0
+                col_letter = col[0].column_letter
+                for cell in col:
+                    if cell.row < 4:
+                        continue  # Skip title row lengths
+                    val_str = str(cell.value or "")
+                    if len(val_str) > max_len:
+                        max_len = len(val_str)
+                ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
+    # Save to IO stream
+    file_stream = io.BytesIO()
+    wb.save(file_stream)
+    file_stream.seek(0)
+    
+    filename = f"Laporan_Stok_{tanggal.isoformat()}.xlsx"
+    return StreamingResponse(
+        file_stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+

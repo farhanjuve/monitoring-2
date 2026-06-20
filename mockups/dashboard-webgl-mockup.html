@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pupuk Monitor — WebGL Dashboard Mockup</title>
+  <style>
+    :root {
+      --bg-0: #031314;
+      --bg-1: #062b2e;
+      --panel: rgba(255, 255, 255, 0.105);
+      --panel-strong: rgba(255, 255, 255, 0.16);
+      --stroke: rgba(255, 255, 255, 0.18);
+      --text: #ecfeff;
+      --muted: rgba(236, 254, 255, 0.68);
+      --muted-2: rgba(236, 254, 255, 0.46);
+      --cyan: #35f2e6;
+      --blue: #3aa7ff;
+      --green: #7cff6b;
+      --yellow: #ffe66a;
+      --orange: #ff9a3d;
+      --red: #ff5c7a;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+      --glow-cyan: 0 0 22px rgba(53, 242, 230, 0.28), 0 0 70px rgba(53, 242, 230, 0.12);
+      --glow-blue: 0 0 22px rgba(58, 167, 255, 0.26), 0 0 70px rgba(58, 167, 255, 0.12);
+      color-scheme: dark;
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(53, 242, 230, 0.24), transparent 28%),
+        radial-gradient(circle at 78% 8%, rgba(58, 167, 255, 0.22), transparent 26%),
+        radial-gradient(circle at 75% 80%, rgba(124, 255, 107, 0.13), transparent 34%),
+        linear-gradient(135deg, var(--bg-0), var(--bg-1) 55%, #020617);
+      color: var(--text);
+    }
+
+    #ambient-webgl {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      opacity: 0.76;
+      z-index: 0;
+    }
+
+    .noise {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.18;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: radial-gradient(circle at center, black, transparent 82%);
+    }
+
+    .shell {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      min-height: 100vh;
+      padding: 18px;
+      gap: 18px;
+    }
+
+    .glass {
+      border: 1px solid var(--stroke);
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+    }
+
+    .sidebar {
+      border-radius: 28px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 30px;
+    }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(135deg, rgba(53, 242, 230, 0.9), rgba(124, 255, 107, 0.7));
+      color: #042325;
+      font-weight: 900;
+      box-shadow: var(--glow-cyan);
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.03em;
+    }
+
+    .brand p {
+      margin: 2px 0 0;
+      color: var(--muted-2);
+      font-size: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav a {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      color: var(--muted);
+      text-decoration: none;
+      border-radius: 16px;
+      padding: 13px 14px;
+      transition: 180ms ease;
+      border: 1px solid transparent;
+    }
+
+    .nav a.active,
+    .nav a:hover {
+      color: var(--text);
+      background: rgba(53, 242, 230, 0.105);
+      border-color: rgba(53, 242, 230, 0.28);
+      box-shadow: inset 0 0 24px rgba(53, 242, 230, 0.08);
+    }
+
+    .nav-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 255, 255, 0.10);
+      font-size: 14px;
+    }
+
+    .side-card {
+      margin-top: auto;
+      padding: 16px;
+      border-radius: 20px;
+      background: rgba(3, 19, 20, 0.42);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .side-card small {
+      color: var(--muted-2);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 10px;
+    }
+
+    .side-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 28px;
+      letter-spacing: -0.05em;
+    }
+
+    main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    main::-webkit-scrollbar { width: 8px; }
+    main::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.14);
+      border-radius: 999px;
+    }
+
+    .topbar {
+      min-height: 86px;
+      border-radius: 28px;
+      padding: 18px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .eyebrow {
+      color: var(--cyan);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .title {
+      margin: 4px 0 0;
+      font-size: clamp(24px, 4vw, 42px);
+      line-height: 1.02;
+      letter-spacing: -0.055em;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .pill,
+    .button {
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.10);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 11px 14px;
+      font-size: 13px;
+      box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.04);
+    }
+
+    .button {
+      background: linear-gradient(135deg, rgba(53, 242, 230, 0.95), rgba(58, 167, 255, 0.88));
+      color: #031314;
+      font-weight: 900;
+      border: 0;
+      box-shadow: var(--glow-cyan);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      gap: 14px;
+    }
+
+    .metric {
+      position: relative;
+      min-height: 138px;
+      border-radius: 26px;
+      padding: 18px;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .metric::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      background: radial-gradient(circle at 78% 18%, var(--accent), transparent 45%);
+      opacity: 0.34;
+      z-index: -1;
+    }
+
+    .metric:nth-child(1) { --accent: rgba(58, 167, 255, 0.85); }
+    .metric:nth-child(2) { --accent: rgba(255, 154, 61, 0.85); }
+    .metric:nth-child(3) { --accent: rgba(124, 255, 107, 0.74); }
+    .metric:nth-child(4) { --accent: rgba(53, 242, 230, 0.85); }
+    .metric:nth-child(5) { --accent: rgba(255, 230, 106, 0.78); }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .metric-value {
+      margin-top: 18px;
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: -0.06em;
+    }
+
+    .metric-unit {
+      color: var(--muted-2);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    .metric-trend {
+      margin-top: 15px;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.14fr) 390px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      border-radius: 28px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: -0.02em;
+    }
+
+    .panel-subtitle {
+      margin: 4px 0 0;
+      color: var(--muted-2);
+      font-size: 12px;
+    }
+
+    .stock-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .stock-table th,
+    .stock-table td {
+      padding: 15px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .stock-table th:first-child,
+    .stock-table td:first-child {
+      text-align: left;
+    }
+
+    .stock-table th {
+      color: var(--muted-2);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .stock-table tbody tr {
+      transition: 160ms ease;
+    }
+
+    .stock-table tbody tr:hover {
+      background: rgba(53, 242, 230, 0.075);
+      box-shadow: inset 3px 0 0 var(--cyan);
+    }
+
+    .warehouse {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 230px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 14px var(--green);
+      flex: 0 0 auto;
+    }
+
+    .warehouse b {
+      display: block;
+      font-size: 13px;
+    }
+
+    .warehouse span {
+      display: block;
+      color: var(--muted-2);
+      margin-top: 3px;
+      font-size: 11px;
+    }
+
+    .detail-btn {
+      border: 1px solid rgba(53, 242, 230, 0.34);
+      color: var(--cyan);
+      background: rgba(53, 242, 230, 0.08);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .right-stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .map-card {
+      min-height: 310px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .map-card::after {
+      content: "";
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      right: -50px;
+      top: 52px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(53, 242, 230, 0.18), transparent 67%);
+      filter: blur(2px);
+    }
+
+    .orbit {
+      position: absolute;
+      inset: 64px 42px 40px 42px;
+      border: 1px solid rgba(53, 242, 230, 0.18);
+      border-radius: 50%;
+      transform: rotate(-12deg);
+    }
+
+    .orbit::before,
+    .orbit::after {
+      content: "";
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: var(--glow-cyan);
+      animation: pulse 1.9s ease-in-out infinite;
+    }
+
+    .orbit::before { top: 34%; left: 16%; }
+    .orbit::after { right: 18%; bottom: 23%; animation-delay: 0.7s; }
+
+    .islands {
+      position: absolute;
+      inset: 88px 48px 52px;
+      filter: drop-shadow(0 0 16px rgba(53, 242, 230, 0.28));
+    }
+
+    .island {
+      position: absolute;
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(53, 242, 230, 0.8), rgba(124, 255, 107, 0.5));
+      opacity: 0.86;
+    }
+
+    .i1 { width: 120px; height: 22px; left: 0; top: 68px; transform: rotate(14deg); }
+    .i2 { width: 96px; height: 20px; left: 76px; top: 118px; transform: rotate(-7deg); }
+    .i3 { width: 108px; height: 26px; left: 130px; top: 72px; transform: rotate(8deg); }
+    .i4 { width: 72px; height: 20px; right: 18px; top: 54px; transform: rotate(-12deg); }
+    .i5 { width: 110px; height: 18px; right: 0; bottom: 38px; transform: rotate(12deg); }
+
+    .alert-list {
+      padding: 0 18px 18px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .alert {
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.075);
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .alert-badge {
+      width: 34px;
+      height: 34px;
+      border-radius: 13px;
+      display: grid;
+      place-items: center;
+      background: rgba(53, 242, 230, 0.12);
+      color: var(--cyan);
+      flex: 0 0 auto;
+    }
+
+    .alert b {
+      display: block;
+      font-size: 13px;
+    }
+
+    .alert span {
+      display: block;
+      color: var(--muted-2);
+      margin-top: 3px;
+      font-size: 12px;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 8;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      background: rgba(0, 0, 0, 0.46);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .modal-card {
+      width: min(760px, 100%);
+      border-radius: 30px;
+      overflow: hidden;
+      animation: modalIn 520ms cubic-bezier(.2,.9,.2,1) both;
+      box-shadow: var(--shadow), var(--glow-cyan);
+    }
+
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 22px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(3, 19, 20, 0.38);
+    }
+
+    .modal-head h2 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -0.04em;
+    }
+
+    .close {
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 22px;
+      cursor: pointer;
+    }
+
+    .modal-body {
+      padding: 22px 24px 24px;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .mini {
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+    }
+
+    .mini span {
+      display: block;
+      color: var(--muted-2);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .mini b {
+      display: block;
+      margin-top: 8px;
+      font-size: 16px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.76; }
+      50% { transform: scale(1.7); opacity: 1; }
+    }
+
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(18px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @media (max-width: 1180px) {
+      body { overflow: auto; }
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { min-height: auto; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+      .content-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 720px) {
+      .shell { padding: 10px; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .summary-grid, .mini-grid { grid-template-columns: 1fr; }
+      .stock-table th:nth-child(3),
+      .stock-table td:nth-child(3),
+      .stock-table th:nth-child(4),
+      .stock-table td:nth-child(4) {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="ambient-webgl" aria-hidden="true"></canvas>
+  <div class="noise" aria-hidden="true"></div>
+
+  <div class="shell">
+    <aside class="sidebar glass">
+      <div class="brand">
+        <div class="brand-mark">PM</div>
+        <div>
+          <h1>Pupuk Monitor</h1>
+          <p>Command center stok nasional</p>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Navigasi utama">
+        <a class="active" href="#"><span class="nav-icon">◈</span> Dashboard</a>
+        <a href="#"><span class="nav-icon">▣</span> Intransit</a>
+        <a href="#"><span class="nav-icon">⇧</span> Upload SAP</a>
+        <a href="#"><span class="nav-icon">◎</span> CCTV Gudang</a>
+        <a href="#"><span class="nav-icon">☰</span> Log Aktivitas</a>
+      </nav>
+
+      <div class="side-card">
+        <small>Kelengkapan upload hari ini</small>
+        <strong>92%</strong>
+        <p style="margin: 8px 0 0; color: var(--muted-2); font-size: 12px;">
+          184/200 gudang sudah punya MB52, SO, dan CCTV.
+        </p>
+      </div>
+    </aside>
+
+    <main>
+      <section class="topbar glass">
+        <div>
+          <div class="eyebrow">Live Stock Intelligence</div>
+          <h2 class="title">Dashboard Stok Gudang</h2>
+        </div>
+        <div class="toolbar">
+          <div class="pill">📅 19 Juni 2026</div>
+          <div class="pill">🌾 Semua pupuk</div>
+          <div class="pill">🔎 Cari gudang / plant</div>
+          <button class="button">Unduh Excel</button>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="Ringkasan stok">
+        <article class="metric glass">
+          <div class="metric-label">Stok Fisik</div>
+          <div class="metric-value">128.429 <span class="metric-unit">Ton</span></div>
+          <div class="metric-trend">▲ 4.8% vs kemarin</div>
+        </article>
+        <article class="metric glass">
+          <div class="metric-label">Outstanding SO</div>
+          <div class="metric-value">21.804 <span class="metric-unit">Ton</span></div>
+          <div class="metric-trend" style="color: var(--orange);">● perlu pantau</div>
+        </article>
+        <article class="metric glass">
+          <div class="metric-label">Admin tanpa Intransit</div>
+          <div class="metric-value">106.625 <span class="metric-unit">Ton</span></div>
+          <div class="metric-trend">▲ aman</div>
+        </article>
+        <article class="metric glass">
+          <div class="metric-label">Intransit</div>
+          <div class="metric-value">8.742 <span class="metric-unit">Ton</span></div>
+          <div class="metric-trend">↗ 31 DO aktif</div>
+        </article>
+        <article class="metric glass">
+          <div class="metric-label">Stok Admin</div>
+          <div class="metric-value">115.367 <span class="metric-unit">Ton</span></div>
+          <div class="metric-trend">◆ target tercapai</div>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel glass">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Detail Stok Per Lokasi</h3>
+              <p class="panel-subtitle">Hover row untuk highlight; klik Detail untuk membuka modal.</p>
+            </div>
+            <div class="pill">12 provinsi aktif</div>
+          </div>
+
+          <table class="stock-table">
+            <thead>
+              <tr>
+                <th>Gudang</th>
+                <th>Jenis</th>
+                <th>Fisik</th>
+                <th>Out. SO</th>
+                <th>Intransit</th>
+                <th>Admin</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="warehouse">
+                    <span class="dot"></span>
+                    <div><b>Gudang Petrokimia Surabaya</b><span>F332 / F331 • Jawa Timur</span></div>
+                  </div>
+                </td>
+                <td>Urea</td><td>8.420,00</td><td>1.120,00</td><td>640,00</td><td><b>7.940,00</b></td>
+                <td><button class="detail-btn" data-open-modal>Detail</button></td>
+              </tr>
+              <tr>
+                <td><div class="warehouse"><span class="dot" style="background: var(--cyan); box-shadow: var(--glow-cyan);"></span><div><b>Gudang Lampung Tengah</b><span>L078 • Lampung</span></div></div></td>
+                <td>NPK</td><td>5.810,00</td><td>730,00</td><td>220,00</td><td><b>5.300,00</b></td>
+                <td><button class="detail-btn" data-open-modal>Detail</button></td>
+              </tr>
+              <tr>
+                <td><div class="warehouse"><span class="dot" style="background: var(--yellow); box-shadow: 0 0 14px var(--yellow);"></span><div><b>Gudang Cirebon</b><span>C014 / C015 • Jawa Barat</span></div></div></td>
+                <td>Urea</td><td>3.280,00</td><td>980,00</td><td>0,00</td><td><b>2.300,00</b></td>
+                <td><button class="detail-btn" data-open-modal>Detail</button></td>
+              </tr>
+              <tr>
+                <td><div class="warehouse"><span class="dot" style="background: var(--red); box-shadow: 0 0 14px var(--red);"></span><div><b>Gudang Makassar Barat</b><span>M991 • Sulawesi Selatan</span></div></div></td>
+                <td>NPK</td><td>1.940,00</td><td>1.720,00</td><td>380,00</td><td><b>600,00</b></td>
+                <td><button class="detail-btn" data-open-modal>Detail</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </article>
+
+        <aside class="right-stack">
+          <article class="panel glass map-card">
+            <div>
+              <h3 class="panel-title">Peta Sebaran Stok</h3>
+              <p class="panel-subtitle">Konsep: glow WebGL/map layer berdasarkan health stok.</p>
+            </div>
+            <div class="orbit"></div>
+            <div class="islands" aria-hidden="true">
+              <div class="island i1"></div>
+              <div class="island i2"></div>
+              <div class="island i3"></div>
+              <div class="island i4"></div>
+              <div class="island i5"></div>
+            </div>
+          </article>
+
+          <article class="panel glass">
+            <div class="panel-header">
+              <div>
+                <h3 class="panel-title">Operational Signals</h3>
+                <p class="panel-subtitle">Status penting yang perlu terlihat cepat.</p>
+              </div>
+            </div>
+            <div class="alert-list">
+              <div class="alert">
+                <div class="alert-badge">✓</div>
+                <div><b>MB52 & ZSD_SODO lengkap</b><span>Data terakhir diproses 09:42 WIB</span></div>
+              </div>
+              <div class="alert">
+                <div class="alert-badge" style="color: var(--yellow); background: rgba(255,230,106,0.12);">!</div>
+                <div><b>16 gudang belum upload CCTV</b><span>Prioritas: Sulamapa dan Kalimantan</span></div>
+              </div>
+              <div class="alert">
+                <div class="alert-badge" style="color: var(--blue); background: rgba(58,167,255,0.12);">↗</div>
+                <div><b>Intransit meningkat</b><span>31 DO aktif dalam 14 hari terakhir</span></div>
+              </div>
+            </div>
+          </article>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal hidden" id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <article class="modal-card glass">
+      <header class="modal-head">
+        <div>
+          <div class="eyebrow">Warehouse Detail</div>
+          <h2 id="modal-title">Gudang Petrokimia Surabaya</h2>
+          <p class="panel-subtitle">F332 / F331 • Jawa Timur • Data 19 Juni 2026</p>
+        </div>
+        <button class="close" id="close-modal" aria-label="Tutup modal">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="mini-grid">
+          <div class="mini"><span>Status CCTV</span><b>2 foto tersedia</b></div>
+          <div class="mini"><span>Kelengkapan SAP</span><b>MB52 + SO valid</b></div>
+          <div class="mini"><span>Health Score</span><b style="color: var(--green);">Aman 86%</b></div>
+        </div>
+        <table class="stock-table">
+          <thead><tr><th>Jenis</th><th>Fisik</th><th>Out. SO</th><th>Admin - IT</th><th>Intransit</th><th>Admin</th></tr></thead>
+          <tbody>
+            <tr><td>Urea</td><td>8.420,00</td><td>1.120,00</td><td>7.300,00</td><td>640,00</td><td><b>7.940,00</b></td></tr>
+            <tr><td>NPK</td><td>4.210,00</td><td>820,00</td><td>3.390,00</td><td>410,00</td><td><b>3.800,00</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("ambient-webgl");
+    const gl = canvas.getContext("webgl", { antialias: true, alpha: true });
+
+    function resize() {
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(innerWidth * ratio);
+      canvas.height = Math.floor(innerHeight * ratio);
+      canvas.style.width = innerWidth + "px";
+      canvas.style.height = innerHeight + "px";
+      if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+
+    if (gl) {
+      const vertex = `
+        attribute vec2 a_position;
+        void main() {
+          gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+      `;
+      const fragment = `
+        precision mediump float;
+        uniform vec2 u_resolution;
+        uniform float u_time;
+
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+            mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+            u.y
+          );
+        }
+
+        void main() {
+          vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+          vec2 p = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+          float t = u_time * 0.08;
+
+          float wave = sin((p.x * 3.0 + p.y * 2.2) + u_time * 0.7) * 0.5 + 0.5;
+          float field = noise(p * 2.4 + vec2(t, -t)) * 0.65 + noise(p * 5.0 - vec2(t * 1.5, t)) * 0.35;
+          float ring = smoothstep(0.42, 0.0, abs(length(p - vec2(0.28, -0.12)) - 0.52));
+          float beam = smoothstep(0.03, 0.0, abs(sin(atan(p.y, p.x) * 3.0 + u_time * 0.45))) * smoothstep(1.35, 0.1, length(p));
+
+          vec3 cyan = vec3(0.20, 0.95, 0.90);
+          vec3 blue = vec3(0.18, 0.55, 1.0);
+          vec3 green = vec3(0.44, 1.0, 0.42);
+          vec3 color = mix(blue, cyan, wave);
+          color = mix(color, green, field * 0.35);
+
+          float alpha = (field * 0.18 + ring * 0.16 + beam * 0.12) * smoothstep(1.42, 0.08, length(p));
+          alpha *= 0.9;
+          gl_FragColor = vec4(color, alpha);
+        }
+      `;
+
+      function compile(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        return shader;
+      }
+
+      const program = gl.createProgram();
+      gl.attachShader(program, compile(gl.VERTEX_SHADER, vertex));
+      gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragment));
+      gl.linkProgram(program);
+      gl.useProgram(program);
+
+      const buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1, -1, 1, -1, -1, 1,
+        -1, 1, 1, -1, 1, 1
+      ]), gl.STATIC_DRAW);
+
+      const position = gl.getAttribLocation(program, "a_position");
+      gl.enableVertexAttribArray(position);
+      gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+
+      const resolution = gl.getUniformLocation(program, "u_resolution");
+      const time = gl.getUniformLocation(program, "u_time");
+
+      resize();
+      window.addEventListener("resize", resize);
+
+      function frame(now) {
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.uniform2f(resolution, canvas.width, canvas.height);
+        gl.uniform1f(time, now * 0.001);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    const modal = document.getElementById("detail-modal");
+    const close = document.getElementById("close-modal");
+    document.querySelectorAll("[data-open-modal]").forEach((button) => {
+      button.addEventListener("click", () => modal.classList.remove("hidden"));
+    });
+    close.addEventListener("click", () => modal.classList.add("hidden"));
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) modal.classList.add("hidden");
+    });
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") modal.classList.add("hidden");
+    });
+  </script>
+</body>
+</html>

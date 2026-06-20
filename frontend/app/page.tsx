@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { Search, FileSpreadsheet } from "lucide-react";
 import { StockSummaryCards } from "@/components/dashboard/StockSummaryCards";
 import { StockTable, type StockCalc } from "@/components/dashboard/StockTable";
 import { MapDashboard } from "@/components/dashboard/MapDashboard";
@@ -176,6 +176,12 @@ export default function Home() {
     syncUrl({ tanggal: tanggal || latestDateStr || "", tipe_pupuk: tipePupuk, q: searchGudang, provinsi: value });
   };
 
+  const handleExportExcel = () => {
+    const selectedDate = tanggal || latestDateStr;
+    if (!selectedDate) return;
+    window.open(`${API_BASE_URL}/api/stocks/export-excel?tanggal=${selectedDate}`, "_blank");
+  };
+
   const displayDate = latestDateStr
     ? new Date(latestDateStr).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
     : "Belum ada data";
@@ -237,6 +243,16 @@ export default function Home() {
             </button>
           </div>
         )}
+        <div>
+          <button
+            onClick={handleExportExcel}
+            disabled={!tanggal && !latestDateStr}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-md px-4 py-2.5 text-sm font-medium transition-colors h-[38px]"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Unduh Excel
+          </button>
+        </div>
       </div>
 
       <div className="mb-6">
