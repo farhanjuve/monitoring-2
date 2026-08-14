@@ -24,9 +24,6 @@ import re
 import tkinter as tk
 import threading
 import configparser
-import requests
-import cv2
-import numpy as np
 from datetime import datetime, timedelta
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image
@@ -132,12 +129,7 @@ def load_config():
     cfg = configparser.ConfigParser()
 
     if not os.path.exists(CONFIG_FILE):
-        cfg["SETTINGS"] = {
-            "laporan": "1",
-            "device_id": "",
-            "api_url": "https://monitoring-2-dusky.vercel.app",
-            "auto_upload": "true"
-        }
+        cfg["SETTINGS"] = {"laporan": "1", "device_id": ""}
         with open(CONFIG_FILE, "w") as f:
             cfg.write(f)
         print(f"[CONFIG] File '{CONFIG_FILE}' dibuat otomatis.")
@@ -145,59 +137,9 @@ def load_config():
         exit()
 
     cfg.read(CONFIG_FILE, encoding="utf-8")
-    laporan     = cfg.get("SETTINGS", "laporan",     fallback="1").strip()
-    device_id   = cfg.get("SETTINGS", "device_id",   fallback="").strip()
-    api_url     = cfg.get("SETTINGS", "api_url",     fallback="https://monitoring-2-dusky.vercel.app").strip()
-    auto_upload = cfg.getboolean("SETTINGS", "auto_upload", fallback=True)
-    return laporan, device_id, api_url, auto_upload
-
-
-# ----------------------------------------------------------------
-# HELPER: UPLOAD FOTO KE BACKEND WEB
-# ----------------------------------------------------------------
-def upload_warehouse_photos(api_url, file_paths, default_tanggal):
-    """
-    Mengunggah file screenshot gudang ke backend FastAPI (/api/photos/bulk-upload).
-    Bersifat non-blocking (jika gagal/offline, tidak menghentikan otomasi lokal).
-    """
-    if not api_url or not file_paths:
-        return
-
-    endpoint = f"{api_url.rstrip('/')}/api/photos/bulk-upload"
-    valid_paths = [p for p in file_paths if os.path.exists(p)]
-    if not valid_paths:
-        return
-
-    files = []
-    opened_files = []
-    try:
-        for p in valid_paths:
-            f = open(p, 'rb')
-            opened_files.append(f)
-            files.append(('files', (os.path.basename(p), f, 'image/png')))
-
-        data = {'default_tanggal': default_tanggal}
-        print(f"   [UPLOAD] Mengunggah {len(files)} foto ke web ({endpoint})...")
-        resp = requests.post(endpoint, files=files, data=data, timeout=15)
-
-        if resp.status_code == 200:
-            res_json = resp.json()
-            success_count = sum(1 for r in res_json.get("results", []) if r.get("status") == "success")
-            print(f"   [UPLOAD OK] Berhasil terunggah ke web: {success_count}/{len(files)} foto.")
-        elif resp.status_code == 404:
-            print(f"   [UPLOAD ERROR] HTTP 404: Endpoint '{endpoint}' tidak ditemukan.")
-            print(f"   [PETUNJUK] `api_url` di config.ini harus diisi dengan URL Backend FastAPI (misal: https://<your-backend>.onrender.com atau http://localhost:8000), BUKAN URL Frontend Vercel.")
-        else:
-            print(f"   [UPLOAD WARNING] HTTP {resp.status_code}: {resp.text[:100]}")
-
-    except Exception as e:
-        print(f"   [UPLOAD ERROR] Gagal mengunggah foto ke web: {e}")
-    finally:
-        for f in opened_files:
-            try:
-                f.close()
-            except:
-                pass
+    laporan   = cfg.get("SETTINGS", "laporan",   fallback="1").strip()
+    device_id = cfg.get("SETTINGS", "device_id", fallback="").strip()
+    return laporan, device_id
 
 
 # ----------------------------------------------------------------
@@ -301,68 +243,40 @@ def compress_image(input_path, max_kb=300):
 
 
 # ----------------------------------------------------------------
-# HELPER: VALIDASI GAMBAR CCTV MENGGUNAKAN OPENCV
+# HELPER: CROP & SISIPKAN GAMBAR KE EXCEL
 # ----------------------------------------------------------------
-def validate_cctv_image(image_path):
-    """Mengukur StdDev & Laplacian Variance untuk mendeteksi blank/offline."""
-    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-    if img is None:
-        return False, "File gambar rusak / tidak dapat dibaca"
-
-    std_dev = np.std(img)
-    
-    laplacian_var = cv2.Laplacian(img, cv2.CV_64F).var()
-
-    STD_DEV_THRESHOLD = 38.0       # Batas minimum variasi piksel (dinaikkan dari 30)
-    LAPLACIAN_THRESHOLD = 45.0     # Batas minimum tekstur/detail tepi (dinaikkan dari 40)
-
-    # Menggunakan operator 'or': ditolak jika sangat datar/polos ATAU minim tepian/detail
-    if std_dev < STD_DEV_THRESHOLD or laplacian_var < LAPLACIAN_THRESHOLD:
-        return False, f"Gambar blank/offline (StdDev: {std_dev:.2f}, Laplacian: {laplacian_var:.2f})"
-
-    return True, f"CCTV valid (StdDev: {std_dev:.2f}, Laplacian: {laplacian_var:.2f})"
-
-
-# ----------------------------------------------------------------
-# HELPER: CROP & KOMPRES SCREENSHOT RAW
-# ----------------------------------------------------------------
-def crop_and_compress_image(local_raw, local_final):
-    """Memotong bagian atas/bawah raw screen, mengompresinya, dan menyimpan."""
+def insert_to_excel(ws, local_raw, local_final, excel_cell, row_idx,
+                    set_row_height=False):
+    """
+    Crop screenshot, simpan versi final, sisipkan ke sel Excel.
+    Hapus file raw setelah selesai.
+    Kembalikan True jika berhasil.
+    """
     try:
         ImageFile.LOAD_TRUNCATED_IMAGES = True
         if not os.path.exists(local_raw):
-            return None
+            print(f"   [!] File tidak ditemukan: {local_raw}")
+            return False
 
         with PILImage.open(local_raw) as img:
             w, h = img.size
             img.crop((0, 160, w, min(1055, h))).save(local_final)
 
-        # Kompres ke JPG di bawah 300 KB
         local_final = compress_image(local_final, max_kb=300)
-        return local_final
-    except Exception as e:
-        print(f"   [!] Gagal memproses gambar crop/kompres: {e}")
-        return None
 
-
-# ----------------------------------------------------------------
-# HELPER: SISIPKAN GAMBAR KE SEL EXCEL
-# ----------------------------------------------------------------
-def insert_image_to_excel(ws, image_path, excel_cell, row_idx, set_row_height=False):
-    """Menyisipkan gambar final yang valid ke sel Excel yang ditentukan."""
-    try:
-        img_ex = Image(image_path)
-        with PILImage.open(image_path) as img:
-            w, h = img.size
+        img_ex        = Image(local_final)
         img_ex.width  = 225
-        img_ex.height = (h / w) * 225
+        img_ex.height = (925 / w) * 225
         ws.add_image(img_ex, excel_cell)
 
         if set_row_height:
             ws.row_dimensions[row_idx].height = 145
+
+        os.remove(local_raw)
         return True
+
     except Exception as e:
-        print(f"   [!] Gagal menyisipkan gambar ke Excel sel {excel_cell}: {e}")
+        print(f"   [!] Error insert gambar ke {excel_cell}: {e}")
         return False
 
 
@@ -370,13 +284,12 @@ def insert_image_to_excel(ws, image_path, excel_cell, row_idx, set_row_height=Fa
 # MAIN AUTOMATION
 # ----------------------------------------------------------------
 def run_automation():
-    laporan_choice, device_id_cfg, api_url, auto_upload = load_config()
+    laporan_choice, device_id_cfg = load_config()
     adb_path = resolve_device(device_id_cfg)
     config   = resolve_profile(laporan_choice)
 
-    print(f"[INFO] Laporan     : {config['out']}")
-    print(f"[INFO] ADB         : {adb_path}")
-    print(f"[INFO] Auto Upload : {'AKTIF (' + api_url + ')' if auto_upload else 'NONAKTIF'}")
+    print(f"[INFO] Laporan : {config['out']}")
+    print(f"[INFO] ADB     : {adb_path}")
 
     output_dir = "screenshots"
     os.makedirs(output_dir, exist_ok=True)
@@ -470,7 +383,6 @@ def run_automation():
 
         # ── LOOP 2 FEED: TAP → SCREENSHOT → EXCEL ───────────────
         excel_cols = {1: "E", 2: "F"}
-        warehouse_files = []
 
         for feed in top2:
             rank     = feed["rank"]
@@ -490,80 +402,26 @@ def run_automation():
                 f'{adb_path} shell input tap {SINGLE_CAM}', shell=True)
             time.sleep(SLEEP_AFTER_TYPING)
 
-            # Ambil screenshot pertama
+            # Ambil screenshot
             check_pause()
             raw_path   = os.path.join(output_dir, f"{kode_safe}_feed{rank}_raw.png")
             
-            # Format penamaan file: [KodePlant]_[FeedKamera]_[Tanggal].png
+            # Format penamaan file baru: [KodePlant]_[FeedKamera]_[Tanggal].png
             tanggal_str = datetime.now().strftime("%Y-%m-%d")
             final_filename = f"{kode_gudang}_{rank}_{tanggal_str}.png"
             final_path = os.path.join(output_dir, final_filename)
             
             take_screenshot(adb_path, raw_path)
 
-            # Proses awal (crop & compress)
-            compressed_path = crop_and_compress_image(raw_path, final_path)
-            
-            is_valid = False
-            msg = "Gagal memproses gambar"
-            if compressed_path:
-                # Validasi kelayakan gambar dengan OpenCV
-                is_valid, msg = validate_cctv_image(compressed_path)
-
-            # Jika terdeteksi blank / offline, lakukan retry hingga 2 kali tambahan
-            if not is_valid:
-                print(f"   [VALIDASI WARNING] {msg}. Memulai recovery retry...")
-                for retry_idx in range(1, 3):
-                    check_pause()
-                    print(f"   [RETRY #{retry_idx}/2] Mengirim perintah refresh stream ke tablet...")
-                    
-                    # Clicks refresh simulation
-                    subprocess.run(f'{adb_path} shell input tap {LAYOUT_BUTTON}', shell=True)
-                    time.sleep(SLEEP_UI)
-                    subprocess.run(f'{adb_path} shell input tap {NINE_CAM}', shell=True)
-                    time.sleep(SLEEP_UI)
-                    subprocess.run(f'{adb_path} shell input tap {LAYOUT_BUTTON}', shell=True)
-                    time.sleep(SLEEP_UI)
-                    subprocess.run(f'{adb_path} shell input tap {SINGLE_CAM}', shell=True)
-                    
-                    # Interval tunggu 10 detik agar stream termuat bersih
-                    print("   [WAIT] Menunggu 10 detik untuk memuat ulang stream...")
-                    time.sleep(10)
-
-                    # Ambil screenshot ulang
-                    take_screenshot(adb_path, raw_path)
-                    compressed_path = crop_and_compress_image(raw_path, final_path)
-                    
-                    if compressed_path:
-                        is_valid, msg = validate_cctv_image(compressed_path)
-                        if is_valid:
-                            print(f"   [VALIDASI OK] CCTV berhasil pulih pada Retry #{retry_idx}!")
-                            break
-                        else:
-                            print(f"   [VALIDASI WARNING] Retry #{retry_idx} tetap gagal: {msg}")
-
-            # Simpan log ke list upload dan tentukan apakah ditulis ke Excel
-            if compressed_path:
-                warehouse_files.append(compressed_path)
-                if is_valid:
-                    # Masukkan ke Excel jika valid
-                    insert_image_to_excel(
-                        ws, compressed_path,
-                        excel_cell=f"{col_name}{current_row}",
-                        row_idx=current_row,
-                        set_row_height=(col_name == "E")
-                    )
-                    print(f"   [OK - EXCEL & WEB] Feed #{rank} valid → Sel {col_name}{current_row} & Upload.")
-                else:
-                    # Lewati Excel jika tetap offline, tetap upload ke web untuk bukti
-                    print(f"   [WARNING - HANYA WEB] Feed #{rank} tetap blank/offline setelah retry → Upload Bukti, Sel {col_name}{current_row} dikosongkan.")
-
-            # Hapus file raw temporary
-            if os.path.exists(raw_path):
-                try:
-                    os.remove(raw_path)
-                except:
-                    pass
+            # Crop & sisipkan ke Excel
+            ok = insert_to_excel(
+                ws, raw_path, final_path,
+                excel_cell=f"{col_name}{current_row}",
+                row_idx=current_row,
+                set_row_height=(col_name == "E"),   # tinggi baris diset di feed #1
+            )
+            if ok:
+                print(f"   [OK] Feed #{rank} → {col_name}{current_row}")
 
             # Kembali ke grid sebelum memilih feed berikutnya
             if rank < len(top2):
@@ -581,11 +439,6 @@ def run_automation():
         print("   [STEP] Kembali ke menu utama...")
         subprocess.run(f'{adb_path} shell input tap {BACK_BUTTON}', shell=True)
         time.sleep(SLEEP_UI)
-
-        # ── AUTO UPLOAD FOTO GUDANG KE BACKEND WEB ──────────────
-        if auto_upload and warehouse_files:
-            tanggal_str = datetime.now().strftime("%Y-%m-%d")
-            upload_warehouse_photos(api_url, warehouse_files, tanggal_str)
 
         # ── ETA ──────────────────────────────────────────────────
         elapsed = time.time() - start_time_all
