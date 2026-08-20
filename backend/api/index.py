@@ -2,13 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-from app.api.routes import auth, stocks, master_data, photos
+from app.api.routes import auth, stocks, master_data, photos, slides
 
 app = FastAPI(title="Pupuk Monitor API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://monitoring-2-dusky.vercel.app"],
+    allow_origins=["https://monitoring-2-dusky.vercel.app", "http://localhost:3000"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -22,6 +22,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(stocks.router, prefix="/api/stocks", tags=["Stocks"])
 app.include_router(master_data.router, prefix="/api/master-data", tags=["Master Data"])
 app.include_router(photos.router, prefix="/api/photos", tags=["Photos"])
+app.include_router(slides.router, prefix="/api/slides", tags=["Slides"])
 
 mock_storage_path = os.path.join(os.getcwd(), "storage", "mock-storage")
 os.makedirs(mock_storage_path, exist_ok=True)

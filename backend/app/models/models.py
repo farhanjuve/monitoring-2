@@ -177,3 +177,23 @@ class NotificationLog(Base):
     pct_of_ss = Column(Float)
     sent_at = Column(DateTime(timezone=True), server_default=func.now())
     fcm_success = Column(Integer, default=0)
+
+class SlidePreset(Base):
+    __tablename__ = "slide_presets"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    warehouse_ids = Column(Text, nullable=False)  # JSON array of ints
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class GeneratedSlide(Base):
+    __tablename__ = "generated_slides"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String(300), nullable=False)
+    tanggal = Column(Date, nullable=False)
+    warehouse_ids = Column(Text, nullable=False)  # JSON array of ints
+    gudang_count = Column(Integer, default=0)
+    slide_count = Column(Integer, default=0)
+    file_path = Column(String(500), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
