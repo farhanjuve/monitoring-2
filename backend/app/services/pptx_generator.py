@@ -12,7 +12,7 @@ import json
 import os
 import requests
 from collections import OrderedDict
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -390,6 +390,31 @@ def _render_card(slide, x: float, y: float, w: float, h: float,
 
 
 # ── Main generator ───────────────────────────────────────────────────────────
+
+def cleanup_old_slides(db: Session, days: int = 21) -> int:
+    """
+    Hapus otomatis file PPTX + record DB yang lebih lama dari `days` hari.
+    Return jumlah record yang dihapus.
+    """
+    from app.models.models import GeneratedSlide
+
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    records = (
+        db.query(GeneratedSlide)
+        .filter(GeneratedSlide.created_at < cutoff)
+        .all()
+    )
+    for rec in records:
+        if rec.file_path and os.path.isfile(rec.file_path):
+            try:
+                os.remove(rec.file_path)
+            except OSError:
+                pass
+        db.delete(rec)
+    if records:
+        db.commit()
+    return len(records)
+
 
 def generate_pptx(
     db: Session,

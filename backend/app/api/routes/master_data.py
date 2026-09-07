@@ -1,8 +1,9 @@
 import csv
 import io
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,36 @@ PLANT_COLUMNS = ["Kode1", "Kode2", "Kode3"]
 
 def _normalize_code(value: str | None) -> str:
     return (value or "").strip().upper()
+
+
+def _resolve_kode_kab(db: Session, kota: str, provinsi: str) -> Optional[int]:
+    """
+    Cari kode_kab dari nama kabupaten/kota (fallback ke kombinasi kota+provinsi)
+    menggunakan tabel warehouses (master gudang) sebagai referensi.
+    """
+    k = kota.strip().lower()
+    p = provinsi.strip().lower()
+
+    ref = (
+        db.query(Warehouse)
+        .filter(func.lower(func.trim(Warehouse.kota)) == k)
+        .first()
+    )
+    if ref:
+        return ref.kode_kab
+
+    ref = (
+        db.query(Warehouse)
+        .filter(
+            func.lower(func.trim(Warehouse.kota)) == k,
+            func.lower(func.trim(Warehouse.provinsi)) == p,
+        )
+        .first()
+    )
+    if ref:
+        return ref.kode_kab
+
+    return None
 
 
 def _parse_kode_kab(value: str, row_number: int) -> int:
@@ -330,6 +361,254 @@ def get_gudang(gudang_id: int, db: Session = Depends(get_db)):
         "is_active": gudang.is_active,
         "kode_plants": kode_plants,
     }
+
+
+# ── CRUD Gudang ────────────────────────────────────────────────────────────
+
+class WarehouseCreate(BaseModel):
+    nama_gudang: str
+    kota: str
+    kode_kab: Optional[int] = None
+    provinsi: str
+    kode_plants: List[str] = []
+
+
+class WarehouseUpdate(BaseModel):
+    nama_gudang: str
+    kota: str
+    kode_kab: Optional[int] = None
+    provinsi: str
+    kode_plants: List[str] = []
+
+
+class PlantUpdate(BaseModel):
+    kode_plants: List[str]
+
+
+@router.get("/reference")
+def get_reference(db: Session = Depends(get_db)):
+    """
+    Referensi provinsi + kota/kabupaten beserta kode_kab dari tabel warehouses
+    (master gudang), untuk dropdown form. Menggunakan data kota yang sudah ada.
+    """
+    rows = db.query(Warehouse.kota, Warehouse.kode_kab, Warehouse.provinsi).distinct().all()
+
+    provinsi_map: Dict[str, Dict[str, Dict[str, Any]]] = {}
+
+    for kota, kode_kab, provinsi in rows:
+        p = (provinsi or "").strip()
+        k = (kota or "").strip()
+        if not p or not k:
+            continue
+        key = f"{p}|{k}"
+        provinsi_map.setdefault(p, {})[key] = {
+            "kota": k,
+            "kode_kab": kode_kab,
+        }
+
+    return [
+        {
+            "provinsi": p,
+            "kabupaten": sorted(items.values(), key=lambda x: x["kota"]),
+        }
+        for p, items in sorted(provinsi_map.items())
+    ]
+
+
+@router.get("/warehouses")
+def list_warehouses(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+    show_inactive: bool = False,
+    db: Session = Depends(get_db),
+):
+    """List semua gudang dengan pagination, search, dan opsi tampilkan inactive."""
+    q = db.query(Warehouse)
+    if not show_inactive:
+        q = q.filter(Warehouse.is_active == True)
+
+    if search:
+        like = f"%{search}%"
+        q = q.filter(
+            Warehouse.nama_gudang.ilike(like)
+            | Warehouse.kota.ilike(like)
+            | Warehouse.provinsi.ilike(like)
+        )
+
+    total = q.count()
+    warehouses = (
+        q.order_by(Warehouse.nama_gudang)
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+
+    items = []
+    for w in warehouses:
+        items.append({
+            "id": w.id,
+            "nama_gudang": w.nama_gudang,
+            "kota": w.kota,
+            "kode_kab": w.kode_kab,
+            "provinsi": w.provinsi,
+            "is_active": w.is_active,
+            "kode_plants": [p.kode_plant for p in (w.plants or [])],
+            "created_at": w.created_at.isoformat() if w.created_at else None,
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page)),
+    }
+
+
+@router.post("/warehouses")
+def create_warehouse(req: WarehouseCreate, db: Session = Depends(get_db)):
+    """Buat gudang baru + kode plant."""
+    if not req.nama_gudang.strip():
+        raise HTTPException(400, "Nama gudang wajib diisi.")
+    if not req.kota.strip():
+        raise HTTPException(400, "Kota wajib diisi.")
+    if not req.provinsi.strip():
+        raise HTTPException(400, "Provinsi wajib diisi.")
+
+    plants = [_normalize_code(c) for c in req.kode_plants if c.strip()]
+    for code in plants:
+        existing = db.query(WarehousePlant).filter(WarehousePlant.kode_plant == code).first()
+        if existing:
+            raise HTTPException(400, f"Kode plant '{code}' sudah digunakan gudang lain.")
+
+    # Autofill kode_kab dari nama kota/kabupaten jika tidak diberikan
+    kode_kab = req.kode_kab
+    if kode_kab is None:
+        kode_kab = _resolve_kode_kab(db, req.kota, req.provinsi)
+        if kode_kab is None:
+            raise HTTPException(
+                400,
+                f"Kode kabupaten untuk kota '{req.kota}' ({req.provinsi}) tidak ditemukan di referensi. "
+                "Isi kode kabupaten secara manual.",
+            )
+
+    warehouse = Warehouse(
+        nama_gudang=req.nama_gudang.strip(),
+        kota=req.kota.strip(),
+        kode_kab=kode_kab,
+        provinsi=req.provinsi.strip(),
+        is_active=True,
+    )
+    db.add(warehouse)
+    db.flush()
+
+    for code in plants:
+        db.add(WarehousePlant(gudang_id=warehouse.id, kode_plant=code))
+
+    db.commit()
+    db.refresh(warehouse)
+
+    return {
+        "id": warehouse.id,
+        "nama_gudang": warehouse.nama_gudang,
+        "kota": warehouse.kota,
+        "kode_kab": warehouse.kode_kab,
+        "provinsi": warehouse.provinsi,
+        "is_active": warehouse.is_active,
+        "kode_plants": plants,
+    }
+
+
+@router.put("/warehouses/{warehouse_id}")
+def update_warehouse(warehouse_id: int, req: WarehouseUpdate, db: Session = Depends(get_db)):
+    """Update data gudang + sinkronisasi kode plant."""
+    warehouse = db.query(Warehouse).filter(Warehouse.id == warehouse_id).first()
+    if not warehouse:
+        raise HTTPException(404, "Gudang tidak ditemukan.")
+    if not req.nama_gudang.strip():
+        raise HTTPException(400, "Nama gudang wajib diisi.")
+
+    plants = [_normalize_code(c) for c in req.kode_plants if c.strip()]
+    for code in plants:
+        existing = (
+            db.query(WarehousePlant)
+            .filter(WarehousePlant.kode_plant == code, WarehousePlant.gudang_id != warehouse_id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(400, f"Kode plant '{code}' sudah digunakan gudang lain.")
+
+    # Autofill kode_kab dari nama kota/kabupaten jika tidak diberikan
+    if req.kode_kab is None:
+        resolved = _resolve_kode_kab(db, req.kota, req.provinsi)
+        if resolved is None:
+            raise HTTPException(
+                400,
+                f"Kode kabupaten untuk kota '{req.kota}' ({req.provinsi}) tidak ditemukan di referensi. "
+                "Isi kode kabupaten secara manual.",
+            )
+        kode_kab = resolved
+    else:
+        kode_kab = req.kode_kab
+
+    warehouse.nama_gudang = req.nama_gudang.strip()
+    warehouse.kota = req.kota.strip()
+    warehouse.kode_kab = kode_kab
+    warehouse.provinsi = req.provinsi.strip()
+    warehouse.is_active = True
+
+    old_plants = {p.kode_plant: p for p in db.query(WarehousePlant).filter(WarehousePlant.gudang_id == warehouse_id).all()}
+    new_plants = set(plants)
+
+    for code in new_plants - set(old_plants.keys()):
+        db.add(WarehousePlant(gudang_id=warehouse_id, kode_plant=code))
+    for code in set(old_plants.keys()) - new_plants:
+        db.delete(old_plants[code])
+
+    db.commit()
+    return {"id": warehouse.id, "message": "Gudang berhasil diupdate."}
+
+
+@router.patch("/warehouses/{warehouse_id}/plants")
+def update_plants_inline(warehouse_id: int, req: PlantUpdate, db: Session = Depends(get_db)):
+    """Update hanya kode plant (untuk inline edit di tabel)."""
+    warehouse = db.query(Warehouse).filter(Warehouse.id == warehouse_id).first()
+    if not warehouse:
+        raise HTTPException(404, "Gudang tidak ditemukan.")
+
+    plants = [_normalize_code(c) for c in req.kode_plants if c.strip()]
+    for code in plants:
+        existing = (
+            db.query(WarehousePlant)
+            .filter(WarehousePlant.kode_plant == code, WarehousePlant.gudang_id != warehouse_id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(400, f"Kode plant '{code}' sudah digunakan gudang lain.")
+
+    old_plants = {p.kode_plant: p for p in db.query(WarehousePlant).filter(WarehousePlant.gudang_id == warehouse_id).all()}
+    new_plants = set(plants)
+
+    for code in new_plants - set(old_plants.keys()):
+        db.add(WarehousePlant(gudang_id=warehouse_id, kode_plant=code))
+    for code in set(old_plants.keys()) - new_plants:
+        db.delete(old_plants[code])
+
+    db.commit()
+    return {"id": warehouse_id, "kode_plants": plants, "message": "Kode plant berhasil diupdate."}
+
+
+@router.delete("/warehouses/{warehouse_id}")
+def delete_warehouse(warehouse_id: int, db: Session = Depends(get_db)):
+    """Soft delete gudang (set is_active=False)."""
+    warehouse = db.query(Warehouse).filter(Warehouse.id == warehouse_id).first()
+    if not warehouse:
+        raise HTTPException(404, "Gudang tidak ditemukan.")
+
+    warehouse.is_active = False
+    db.commit()
+    return {"message": f"Gudang '{warehouse.nama_gudang}' berhasil dinonaktifkan."}
 
 
 @router.get("/unmapped-plants")

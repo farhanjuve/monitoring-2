@@ -35,18 +35,6 @@ interface UploadDryRunResult {
   rows_parsed: number;
 }
 
-interface MasterUploadResult {
-  message: string;
-  warehouses_count: number;
-  plants_count: number;
-  created_count?: number;
-  updated_count?: number;
-  merged_count?: number;
-  deactivated_count?: number;
-  recalculated_dates?: string[];
-  merge_details?: string[];
-}
-
 type SetProgress = Dispatch<SetStateAction<number>>;
 
 function uploadWithProgress<T>(
@@ -153,13 +141,7 @@ export function UploadSAPForm() {
   const [zsdDryRunLoading, setZsdDryRunLoading] = useState(false);
   const zsdRef = useRef<HTMLInputElement>(null);
 
-  // Master Gudang state
-  const [masterFile, setMasterFile] = useState<File | null>(null);
-  const [masterLoading, setMasterLoading] = useState(false);
-  const [masterResult, setMasterResult] = useState<MasterUploadResult | null>(null);
-  const [masterError, setMasterError] = useState<string | null>(null);
-  const [masterProgress, setMasterProgress] = useState(0);
-  const masterRef = useRef<HTMLInputElement>(null);
+  // Master Gudang state removed — moved to /data-gudang page
 
   // Photo Upload state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -271,33 +253,6 @@ export function UploadSAPForm() {
         setFile(file);
         afterSetFile?.();
       }
-    }
-  };
-
-  const handleUploadMaster = async () => {
-    if (!masterFile) return;
-    setMasterLoading(true);
-    setMasterResult(null);
-    setMasterError(null);
-    setMasterProgress(0);
-
-    const formData = new FormData();
-    formData.append("file", masterFile);
-    const progress = createUploadProgressController(setMasterProgress);
-
-    try {
-      const data = await uploadWithProgress<MasterUploadResult>(
-        `${API_BASE_URL}/api/master-data/upload`,
-        formData,
-        progress.onProgress
-      );
-      progress.finish();
-      setMasterResult(data);
-    } catch (err: unknown) {
-      setMasterError((err as Error).message || "Terjadi kesalahan saat mengupload file master.");
-      progress.reset();
-    } finally {
-      setMasterLoading(false);
     }
   };
 
@@ -581,97 +536,6 @@ export function UploadSAPForm() {
         {zsdDryRun && <DryRunBanner result={zsdDryRun} />}
         {zsdResult && <ResultBanner result={zsdResult} />}
         {zsdError && <ErrorBanner message={zsdError} />}
-      </div>
-
-      {/* Upload Master Gudang */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-        <h3 className="text-lg font-bold text-pupuk-darkBlue mb-1">Master Data Gudang</h3>
-        <p className="text-xs text-gray-500 mb-4">Upload file CSV (gdfix1505.csv) untuk memperbarui data gudang dan kode plant.</p>
-
-        <input
-          ref={masterRef}
-          type="file"
-          accept=".csv"
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files?.[0]) {
-              setMasterFile(e.target.files[0]);
-              setMasterError(null);
-              setMasterResult(null);
-              setMasterProgress(0);
-            }
-          }}
-        />
-
-        <div
-          onClick={() => masterRef.current?.click()}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => handleDrop(e, setMasterFile, () => {
-            setMasterError(null);
-            setMasterResult(null);
-            setMasterProgress(0);
-          }, true)}
-          className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer
-            ${masterFile ? "border-pupuk-turquoise bg-emerald-50" : "border-gray-300 hover:bg-gray-50 hover:border-gray-400"}`}
-        >
-          {masterFile ? (
-            <>
-              <FileSpreadsheet className="w-10 h-10 text-pupuk-turquoise mb-2" />
-              <p className="text-sm font-medium text-gray-800">{masterFile.name}</p>
-              <p className="text-xs text-gray-500 mt-1">{(masterFile.size / 1024).toFixed(1)} KB</p>
-            </>
-          ) : (
-            <>
-              <UploadCloud className="w-10 h-10 text-gray-400 mb-3" />
-              <p className="text-sm font-medium text-gray-700">Klik untuk upload atau drag & drop</p>
-              <p className="text-xs text-gray-400 mt-1">Format: .csv</p>
-            </>
-          )}
-        </div>
-
-        {masterFile && (
-          <button
-            onClick={handleUploadMaster}
-            disabled={masterLoading}
-            className="mt-4 bg-pupuk-darkBlue text-white px-6 py-2.5 rounded-md font-medium hover:bg-pupuk-darkBlue/90 transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            {masterLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
-            {masterLoading ? "Memproses..." : "Upload Master Gudang"}
-          </button>
-        )}
-
-        <UploadProgressBar progress={masterProgress} loading={masterLoading} />
-        {masterResult && (
-          <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-emerald-800">{masterResult.message}</p>
-                {(masterResult.created_count !== undefined || masterResult.merged_count !== undefined) && (
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-emerald-700 md:grid-cols-4">
-                    <span>Dibuat: <b>{masterResult.created_count ?? 0}</b></span>
-                    <span>Diupdate: <b>{masterResult.updated_count ?? 0}</b></span>
-                    <span>Dimerge: <b>{masterResult.merged_count ?? 0}</b></span>
-                    <span>Plant: <b>{masterResult.plants_count}</b></span>
-                    <span>Dinonaktifkan: <b>{masterResult.deactivated_count ?? 0}</b></span>
-                    <span>Tanggal dihitung ulang: <b>{masterResult.recalculated_dates?.length ?? 0}</b></span>
-                  </div>
-                )}
-                {masterResult.merge_details && masterResult.merge_details.length > 0 && (
-                  <div className="mt-3 rounded-md border border-emerald-200 bg-white/70 p-3">
-                    <p className="text-xs font-semibold text-emerald-800">Merge gudang:</p>
-                    <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-emerald-700">
-                      {masterResult.merge_details.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-        {masterError && <ErrorBanner message={masterError} />}
       </div>
 
       {/* Upload Foto Gudang - Single */}

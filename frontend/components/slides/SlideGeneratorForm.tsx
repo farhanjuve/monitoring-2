@@ -220,6 +220,17 @@ export function SlideGeneratorForm() {
     window.open(`${API_BASE_URL}/api/slides/download/${slideId}`, "_blank");
   }, []);
 
+  // ── Delete slide ─────────────────────────────────────────────────────
+  const handleDelete = useCallback(async (slideId: number, filename: string) => {
+    if (!confirm(`Hapus laporan "${filename}"?`)) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/slides/${slideId}`, { method: "DELETE" });
+      if (res.ok) loadHistory();
+    } catch (e) {
+      console.error(e);
+    }
+  }, [loadHistory]);
+
   return (
     <div className="space-y-6">
       {/* ───── Form Section ───── */}
@@ -487,13 +498,21 @@ export function SlideGeneratorForm() {
                     {slide.tanggal} · {slide.gudang_count} gudang · {slide.slide_count} slide{slide.created_at ? ` · ${slide.created_at}` : ""}
                   </p>
                 </div>
-                <button
-                  onClick={() => handleDownload(slide.id)}
-                  className="shrink-0 ml-3 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Unduh
-                </button>
+                <div className="flex gap-2 shrink-0 ml-3">
+                  <button
+                    onClick={() => handleDownload(slide.id)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Unduh
+                  </button>
+                  <button
+                    onClick={() => handleDelete(slide.id, slide.filename)}
+                    className="text-red-500 hover:text-red-700 p-2 rounded-md hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

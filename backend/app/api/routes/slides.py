@@ -20,7 +20,7 @@ from app.models.models import (
     GeneratedSlide, SlidePreset, Warehouse, WarehousePlant,
     StockCalculation, Photo,
 )
-from app.services.pptx_generator import generate_pptx, SLIDES_DIR
+from app.services.pptx_generator import generate_pptx, cleanup_old_slides, SLIDES_DIR
 
 router = APIRouter()
 
@@ -103,6 +103,9 @@ def generate_slide(
         raise HTTPException(status_code=400, detail="Pilih minimal 1 gudang.")
     if len(req.warehouse_ids) > 100:
         raise HTTPException(status_code=400, detail="Maksimal 100 gudang per generate.")
+
+    # Auto-cleanup file slides yang lebih dari 21 hari
+    cleanup_old_slides(db, days=21)
 
     try:
         filename, file_path, gudang_count, slide_count = generate_pptx(
@@ -224,6 +227,27 @@ def create_preset(
         "warehouse_ids": req.warehouse_ids,
         "created_at": record.created_at.strftime("%Y-%m-%d") if record.created_at else None,
     }
+
+
+@router.delete("/{slide_id}")
+def delete_slide(
+    slide_id: int,
+    db: Session = Depends(get_db),
+):
+    """Hapus file PPTX + record dari DB."""
+    import os
+
+    record = db.query(GeneratedSlide).filter(GeneratedSlide.id == slide_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Laporan tidak ditemukan.")
+
+    # Hapus file dari disk
+    if record.file_path and os.path.isfile(record.file_path):
+        os.remove(record.file_path)
+
+    db.delete(record)
+    db.commit()
+    return {"message": "Laporan berhasil dihapus."}
 
 
 @router.delete("/presets/{preset_id}")
