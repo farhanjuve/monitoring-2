@@ -96,6 +96,143 @@ def update_stock_calculation(db: Session, tanggal: date, gudang_id: int, jenis_p
     return record
 
 
+def _gudang_available_dates(db: Session, gudang_id: int) -> List[date]:
+    """Tanggal-tanggal yang punya data SAP (MB52/ZSD_SODO) untuk plant milik gudang ini."""
+    plant_codes = [
+        r[0] for r in db.query(WarehousePlant.kode_plant)
+        .filter(WarehousePlant.gudang_id == gudang_id).all()
+    ]
+    if not plant_codes:
+        return []
+
+    sap_dates = {
+        r[0] for r in db.query(SAPStock.tanggal)
+        .filter(SAPStock.tanggal != None, SAPStock.kode_plant.in_(plant_codes))
+        .distinct().all()
+    }
+    do_dates = {
+        r[0] for r in db.query(SAPOutstandingDO.tanggal)
+        .filter(SAPOutstandingDO.tanggal != None, SAPOutstandingDO.kode_plant.in_(plant_codes))
+        .distinct().all()
+    }
+    return sorted(sap_dates | do_dates)
+
+
+def recalculate_gudang_for_date(db: Session, tanggal: date, gudang_id: int) -> List[Dict[str, Any]]:
+    """
+    Hitung ulang stok untuk SATU gudang pada satu tanggal.
+    Hapus record StockCalculation lama gudang tersebut lalu tulis dari data SAP terbaru.
+    """
+    plant_codes = [
+        r[0] for r in db.query(WarehousePlant.kode_plant)
+        .filter(WarehousePlant.gudang_id == gudang_id).all()
+    ]
+    if not plant_codes:
+        return []
+
+    # Data MB52 (stok fisik & intransit) untuk plant gudang ini
+    mb52_data = db.query(
+        SAPStock.jenis_pupuk,
+        func.coalesce(func.sum(SAPStock.unrestricted), 0.0),
+        func.coalesce(func.sum(SAPStock.intransit), 0.0),
+    ).filter(
+        SAPStock.tanggal == tanggal,
+        SAPStock.kode_plant.in_(plant_codes),
+    ).group_by(SAPStock.jenis_pupuk).all()
+
+    # Data Outstanding DO untuk plant gudang ini
+    do_data = db.query(
+        SAPOutstandingDO.jenis_pupuk,
+        func.coalesce(func.sum(SAPOutstandingDO.outstanding_qty), 0.0),
+    ).filter(
+        SAPOutstandingDO.tanggal == tanggal,
+        SAPOutstandingDO.kode_plant.in_(plant_codes),
+    ).group_by(SAPOutstandingDO.jenis_pupuk).all()
+
+    combos: Dict[str, Dict[str, float]] = {}
+    for jenis_pupuk, fisik, intransit in mb52_data:
+        combos[jenis_pupuk] = {
+            "stok_fisik": float(fisik),
+            "intransit": float(intransit),
+            "outstanding_so": 0.0,
+        }
+    for jenis_pupuk, outstanding in do_data:
+        if jenis_pupuk not in combos:
+            combos[jenis_pupuk] = {
+                "stok_fisik": 0.0,
+                "intransit": 0.0,
+                "outstanding_so": float(outstanding),
+            }
+        else:
+            combos[jenis_pupuk]["outstanding_so"] = float(outstanding)
+
+    # Hapus record lama untuk gudang+tanggal ini supaya tidak ada sisa (stale) tipe pupuk
+    db.query(StockCalculation).filter(
+        StockCalculation.gudang_id == gudang_id,
+        StockCalculation.tanggal == tanggal,
+    ).delete(synchronize_session=False)
+
+    results = []
+    for jenis_pupuk, data in combos.items():
+        stok_admin_tanpa_intransit = data["stok_fisik"] - data["outstanding_so"]
+        stok_admin = stok_admin_tanpa_intransit + data["intransit"]
+
+        record = StockCalculation(
+            tanggal=tanggal,
+            gudang_id=gudang_id,
+            tipe_pupuk=jenis_pupuk,
+            stok_fisik=round(data["stok_fisik"], 2),
+            outstanding_so=round(data["outstanding_so"], 2),
+            stok_admin_tanpa_intransit=round(stok_admin_tanpa_intransit, 2),
+            intransit=round(data["intransit"], 2),
+            stok_admin=round(stok_admin, 2),
+        )
+        db.add(record)
+        results.append({"tipe_pupuk": jenis_pupuk, **data, "stok_admin": stok_admin})
+
+    return results
+
+
+def recalculate_warehouse_range(
+    db: Session,
+    gudang_id: int,
+    tanggal_awal: Optional[str] = None,
+    tanggal_akhir: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Hitung ulang stok untuk satu gudang pada rentang tanggal.
+    - Jika tanggal_awal/akhir kosong, gunakan kelonggaran seluruh tanggal yang punya data SAP.
+    Return: total kombinasi terhitung, daftar tanggal yang diproses.
+    """
+    from datetime import datetime
+
+    dates = _gudang_available_dates(db, gudang_id)
+    if not dates:
+        return {"processed_count": 0, "calculation_count": 0, "dates": []}
+
+    if tanggal_awal:
+        awal = datetime.strptime(tanggal_awal, "%Y-%m-%d").date()
+        dates = [d for d in dates if d >= awal]
+    if tanggal_akhir:
+        akhir = datetime.strptime(tanggal_akhir, "%Y-%m-%d").date()
+        dates = [d for d in dates if d <= akhir]
+
+    processed_count = 0
+    calculation_count = 0
+    for d in dates:
+        results = recalculate_gudang_for_date(db, d, gudang_id)
+        if results:
+            processed_count += 1
+            calculation_count += len(results)
+
+    db.commit()
+    return {
+        "processed_count": processed_count,
+        "calculation_count": calculation_count,
+        "dates": [d.isoformat() for d in dates],
+    }
+
+
 def recalculate_all_for_date(db: Session, tanggal: date) -> List[Dict[str, Any]]:
     """
     Hitung ulang stok untuk SEMUA gudang dan jenis pupuk pada tanggal tertentu.

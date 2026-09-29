@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import {
+  Calculator,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -28,13 +29,14 @@ interface Props {
   onEdit: (w: Warehouse) => void;
   onDeleted: () => void;
   onPlantsUpdated: () => void;
+  onRecalculate: (w: Warehouse) => void;
 }
 
 export function WarehouseTable({
   warehouses, loading, page, totalPages, total,
   search, showInactive,
   onPageChange, onSearchChange, onShowInactiveChange,
-  onEdit, onDeleted, onPlantsUpdated,
+  onEdit, onDeleted, onPlantsUpdated, onRecalculate,
 }: Props) {
   const [editingPlantsId, setEditingPlantsId] = useState<number | null>(null);
   const [editingPlantsValue, setEditingPlantsValue] = useState("");
@@ -206,6 +208,13 @@ export function WarehouseTable({
                           title="Edit gudang"
                         >
                           <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => onRecalculate(w)}
+                          className="text-gray-500 hover:text-emerald-600 p-1.5 rounded hover:bg-emerald-50 transition-colors"
+                          title="Hitung ulang stok"
+                        >
+                          <Calculator className="w-4 h-4" />
                         </button>
                         {w.is_active && (
                           <button

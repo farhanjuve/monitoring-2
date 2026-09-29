@@ -197,3 +197,42 @@ class GeneratedSlide(Base):
     slide_count = Column(Integer, default=0)
     file_path = Column(String(500), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class IndigoReport(Base):
+    __tablename__ = "indigo_reports"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    periode = Column(String(7), index=True, nullable=False)  # YYYY-MM
+    sap_filename = Column(String(300), nullable=False)
+    indigo_filename = Column(String(300), nullable=False)
+    sap_do_count = Column(Integer, default=0)
+    indigo_do_count = Column(Integer, default=0)
+    matched_count = Column(Integer, default=0)
+    realization_pct = Column(Float, default=0.0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class IndigoDO(Base):
+    __tablename__ = "indigo_do_records"
+    __table_args__ = (
+        Index('ix_indigo_do_periode_ekspeditur', 'periode', 'ekspeditur'),
+        Index('ix_indigo_do_periode_asal', 'periode', 'plant_asal'),
+        Index('ix_indigo_do_periode_tujuan', 'periode', 'plant_tujuan'),
+    )
+    
+    id = Column(Integer, primary_key=True, index=True)
+    report_id = Column(Integer, ForeignKey("indigo_reports.id", ondelete="CASCADE"), index=True, nullable=False)
+    periode = Column(String(7), index=True, nullable=False)
+    no_do = Column(String(40), index=True, nullable=False)
+    ekspeditur = Column(String(200), index=True)
+    plant_asal = Column(String(200), index=True)
+    plant_tujuan = Column(String(200), index=True)
+    provinsi_asal = Column(String(100))
+    kabupaten_asal = Column(String(100))
+    provinsi_tujuan = Column(String(100))
+    kabupaten_tujuan = Column(String(100))
+    material = Column(String(200))
+    tgl_gi = Column(Date)
+    is_matched = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    report = relationship("IndigoReport", backref="do_records")

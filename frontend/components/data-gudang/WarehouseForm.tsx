@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Loader2, Plus, X } from "lucide-react";
+import { Calculator, Loader2, Plus, X } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 import { Warehouse } from "./types";
 
@@ -9,6 +9,7 @@ interface Props {
   warehouse: Warehouse | null;
   onClose: () => void;
   onSaved: () => void;
+  onRecalculate?: (w: Warehouse) => void;
 }
 
 interface KabupatenOption {
@@ -21,7 +22,7 @@ interface ReferenceProvinsi {
   kabupaten: KabupatenOption[];
 }
 
-export function WarehouseForm({ warehouse, onClose, onSaved }: Props) {
+export function WarehouseForm({ warehouse, onClose, onSaved, onRecalculate }: Props) {
   const isEdit = Boolean(warehouse);
   const [namaGudang, setNamaGudang] = useState(warehouse?.nama_gudang ?? "");
   const [kota, setKota] = useState(warehouse?.kota ?? "");
@@ -224,6 +225,17 @@ export function WarehouseForm({ warehouse, onClose, onSaved }: Props) {
             >
               Batal
             </button>
+            {isEdit && onRecalculate && warehouse && (
+              <button
+                type="button"
+                onClick={() => onRecalculate(warehouse)}
+                className="px-4 py-2 border border-emerald-300 text-emerald-700 rounded-md text-sm hover:bg-emerald-50 flex items-center gap-2"
+                title="Hitung ulang stok untuk rentang tanggal (opsional)"
+              >
+                <Calculator className="w-4 h-4" />
+                Hitung Ulang Stok
+              </button>
+            )}
             <button
               onClick={handleSubmit}
               disabled={loading || refLoading}

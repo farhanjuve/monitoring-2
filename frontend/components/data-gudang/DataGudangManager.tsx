@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { WarehouseTable } from "./WarehouseTable";
 import { WarehouseForm } from "./WarehouseForm";
+import { RecalculateDialog } from "./RecalculateDialog";
 import { UploadMasterCSV } from "./UploadMasterCSV";
 import { API_BASE_URL } from "@/lib/api";
 import { Warehouse } from "./types";
@@ -17,6 +18,7 @@ export function DataGudangManager() {
   const [showInactive, setShowInactive] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editWarehouse, setEditWarehouse] = useState<Warehouse | null>(null);
+  const [recalcWarehouse, setRecalcWarehouse] = useState<Warehouse | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const showToast = useCallback((type: "success" | "error", message: string) => {
@@ -90,6 +92,7 @@ export function DataGudangManager() {
         onEdit={(w) => { setEditWarehouse(w); setShowForm(true); }}
         onDeleted={handleDeleted}
         onPlantsUpdated={handlePlantsUpdated}
+        onRecalculate={(w) => setRecalcWarehouse(w)}
       />
 
       {showForm && (
@@ -97,6 +100,15 @@ export function DataGudangManager() {
           warehouse={editWarehouse}
           onClose={() => { setShowForm(false); setEditWarehouse(null); }}
           onSaved={handleSaved}
+          onRecalculate={(w) => setRecalcWarehouse(w)}
+        />
+      )}
+
+      {recalcWarehouse && (
+        <RecalculateDialog
+          warehouse={recalcWarehouse}
+          onClose={() => setRecalcWarehouse(null)}
+          onDone={(msg) => { setRecalcWarehouse(null); showToast("success", msg); }}
         />
       )}
     </div>

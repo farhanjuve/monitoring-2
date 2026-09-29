@@ -17,7 +17,7 @@ from app.models.models import (
     Warehouse,
     WarehousePlant,
 )
-from app.services.stock_calculator import recalculate_all_for_date
+from app.services.stock_calculator import recalculate_all_for_date, recalculate_warehouse_range
 
 router = APIRouter()
 
@@ -385,6 +385,11 @@ class PlantUpdate(BaseModel):
     kode_plants: List[str]
 
 
+class RecalculateRangeRequest(BaseModel):
+    tanggal_awal: Optional[str] = None
+    tanggal_akhir: Optional[str] = None
+
+
 @router.get("/reference")
 def get_reference(db: Session = Depends(get_db)):
     """
@@ -597,6 +602,35 @@ def update_plants_inline(warehouse_id: int, req: PlantUpdate, db: Session = Depe
 
     db.commit()
     return {"id": warehouse_id, "kode_plants": plants, "message": "Kode plant berhasil diupdate."}
+
+
+@router.post("/warehouses/{warehouse_id}/recalculate")
+def recalculate_warehouse(
+    warehouse_id: int,
+    req: RecalculateRangeRequest,
+    db: Session = Depends(get_db),
+):
+    """Hitung ulang stok gudang pada rentang tanggal (opsional). Kosong = semua tanggal berisi data."""
+    warehouse = db.query(Warehouse).filter(Warehouse.id == warehouse_id).first()
+    if not warehouse:
+        raise HTTPException(404, "Gudang tidak ditemukan.")
+
+    try:
+        result = recalculate_warehouse_range(
+            db, warehouse_id,
+            tanggal_awal=req.tanggal_awal,
+            tanggal_akhir=req.tanggal_akhir,
+        )
+    except ValueError as e:
+        raise HTTPException(400, f"Format tanggal salah: {str(e)}")
+
+    return {
+        "message": (
+            f"Stok gudang '{warehouse.nama_gudang}' berhasil dihitung ulang "
+            f"untuk {result['processed_count']} tanggal / {result['calculation_count']} kombinasi."
+        ),
+        **result,
+    }
 
 
 @router.delete("/warehouses/{warehouse_id}")

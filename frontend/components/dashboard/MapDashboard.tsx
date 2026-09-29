@@ -11,6 +11,13 @@ const geoUrl = "/indonesia-province-simple.json";
 const PROVINSI_ALIAS: Record<string, string> = {
   "di yogyakarta": "daerah istimewa yogyakarta",
   "dki jakarta": "daerah khusus ibukota jakarta",
+  "di. aceh": "aceh",
+  "bangka belitung": "kep. bangka belitung",
+  "nusatenggara barat": "nusa tenggara barat",
+  "irian jaya barat": "papua barat",
+  "irian jaya tengah": "papua tengah",
+  "irian jaya timur": "papua",
+  "probanten": "banten",
 };
 
 const normalizeProvince = (name: string) => {
