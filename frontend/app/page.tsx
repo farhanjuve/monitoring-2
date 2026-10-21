@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Search, FileSpreadsheet } from "lucide-react";
 import { StockSummaryCards } from "@/components/dashboard/StockSummaryCards";
 import { StockTable, type StockCalc } from "@/components/dashboard/StockTable";
-import { MapDashboard } from "@/components/dashboard/MapDashboard";
+import { MapDashboard, type SafetyProvinsi } from "@/components/dashboard/MapDashboard";
 import { UnmappedPlantsBanner } from "@/components/dashboard/UnmappedPlantsBanner";
 import {
   UploadCompletenessBadge,
@@ -13,18 +13,13 @@ import {
   type UploadCompletenessStatus,
 } from "@/components/dashboard/UploadCompletenessBanner";
 import { API_BASE_URL } from "@/lib/api";
+import { normalizeProvince } from "@/lib/province";
 
 const PUPUK_OPTIONS = ["Semua", "Urea", "NPK", "ZA", "SP-36", "Organik"];
 
-const PROVINSI_ALIAS: Record<string, string> = {
-  "di yogyakarta": "daerah istimewa yogyakarta",
-  "dki jakarta": "daerah khusus ibukota jakarta",
-};
-
-const normalizeProvince = (name: string) => {
-  const base = name.trim().toLowerCase().replace(/\s+/g, " ");
-  return PROVINSI_ALIAS[base] || base;
-};
+const fieldLabel = "block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1";
+const fieldControl =
+  "rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 transition-colors focus:border-pupuk-darkBlue focus:outline-none focus:ring-2 focus:ring-pupuk-darkBlue/15";
 
 export default function Home() {
   const router = useRouter();
@@ -34,9 +29,11 @@ export default function Home() {
   const [tipePupuk, setTipePupuk] = useState("Semua");
   const [searchGudang, setSearchGudang] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("");
+  const [mapTipePupuk, setMapTipePupuk] = useState("Semua");
   const [rawData, setRawData] = useState<StockCalc[]>([]);
   const [uploadStatus, setUploadStatus] = useState<UploadCompletenessStatus | null>(null);
   const [loading, setLoading] = useState(false);
+  const [safetyByProvinsi, setSafetyByProvinsi] = useState<Record<string, SafetyProvinsi>>({});
   const cacheRef = useRef<Record<string, StockCalc[]>>({});
   const uploadStatusCacheRef = useRef<Record<string, UploadCompletenessStatus>>({});
 
@@ -141,6 +138,40 @@ export default function Home() {
     loadUploadStatus();
   }, [tanggal, latestDateStr]);
 
+  useEffect(() => {
+    const selectedDate = tanggal || latestDateStr || "";
+    if (!selectedDate) return;
+    const parts = selectedDate.split("-");
+    if (parts.length !== 3) return;
+    const tahun = Number(parts[0]);
+    const bulan = Number(parts[1]);
+    if (!tahun || !bulan) return;
+
+    let active = true;
+    fetch(`${API_BASE_URL}/api/safety-stock/by-provinsi?tahun=${tahun}&bulan=${bulan}`)
+      .then((r) => r.json())
+      .then((rows: Array<SafetyProvinsi & { provinsi: string }>) => {
+        if (!active) return;
+        const map: Record<string, SafetyProvinsi> = {};
+        rows.forEach((row) => {
+          map[normalizeProvince(row.provinsi || "")] = {
+            ss_urea: row.ss_urea || 0,
+            ss_npk: row.ss_npk || 0,
+            ss_npk_kakao: row.ss_npk_kakao || 0,
+            ss_za: row.ss_za || 0,
+            ss_sp36: row.ss_sp36 || 0,
+            ss_organik: row.ss_organik || 0,
+          };
+        });
+        setSafetyByProvinsi(map);
+      })
+      .catch((e) => {
+        console.error(e);
+        if (active) setSafetyByProvinsi({});
+      });
+    return () => { active = false; };
+  }, [tanggal, latestDateStr]);
+
   const mapData = useMemo(() => {
     const needle = searchGudang.trim().toLowerCase();
     return rawData.filter((row) => {
@@ -187,34 +218,44 @@ export default function Home() {
     : "Belum ada data";
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
+    <div className="mx-auto max-w-[1400px]">
+      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-pupuk-darkBlue dark:text-pupuk-turquoise mb-1">Dashboard Stok Gudang</h1>
-          <p className="text-muted-foreground">Ringkasan data stok fisik dan SAP terbaru.</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Monitoring Stok</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-pupuk-darkBlue">Dashboard Stok Gudang</h1>
+          <p className="mt-1 text-sm text-slate-500">Ringkasan stok fisik dan stok admin dari data SAP terbaru.</p>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <div className="text-sm bg-blue-50 text-pupuk-blue px-4 py-2 rounded-md font-medium">Update Terakhir: {displayDate}</div>
+        <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+          <div className="text-right">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Update terakhir</p>
+            <p className="text-sm font-semibold text-slate-700">{displayDate}</p>
+          </div>
           <UploadCompletenessBadge status={uploadStatus} />
         </div>
-      </div>
+      </header>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 mb-6 flex flex-wrap gap-4 items-end">
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-3 border-b border-slate-200 py-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">Tanggal Data</label>
+          <label htmlFor="tanggal-data" className={fieldLabel}>
+            Tanggal data
+          </label>
           <input
+            id="tanggal-data"
             type="date"
             value={tanggal || latestDateStr || ""}
             onChange={(e) => updateTanggal(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pupuk-turquoise"
+            className={fieldControl}
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">Jenis Pupuk</label>
+          <label htmlFor="jenis-pupuk" className={fieldLabel}>
+            Jenis pupuk
+          </label>
           <select
+            id="jenis-pupuk"
             value={tipePupuk}
             onChange={(e) => updatePupuk(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pupuk-turquoise bg-white"
+            className={`${fieldControl} bg-white`}
           >
             {PUPUK_OPTIONS.map((option) => (
               <option key={option} value={option}>
@@ -223,46 +264,62 @@ export default function Home() {
             ))}
           </select>
         </div>
-        <div className="min-w-[260px] flex-1">
-          <label className="block text-xs font-semibold text-gray-700 mb-1">Cari Gudang / Plant / Kota</label>
+        <div className="min-w-[220px] flex-1">
+          <label htmlFor="cari-gudang" className={fieldLabel}>
+            Cari gudang / plant / kota
+          </label>
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" aria-hidden="true" />
             <input
+              id="cari-gudang"
               value={searchGudang}
               onChange={(e) => updateSearch(e.target.value)}
               placeholder="Contoh: Gudang A / F332 / Surabaya"
-              className="w-full border border-gray-300 rounded-md pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pupuk-turquoise"
+              className={`${fieldControl} w-full pl-9`}
             />
           </div>
         </div>
         {provinceFilter && (
-          <div className="text-xs px-3 py-2 border rounded-md bg-emerald-50 text-emerald-800 border-emerald-200">
-            Provinsi aktif: <b>{provinceFilter}</b>{" "}
-            <button onClick={() => updateProvince("")} className="underline ml-1">
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800">
+            Provinsi: <b className="font-semibold">{provinceFilter}</b>
+            <button type="button" onClick={() => updateProvince("")} className="underline underline-offset-2 hover:text-emerald-900">
               reset
             </button>
           </div>
         )}
-        <div>
+        <div className="ml-auto">
           <button
+            type="button"
             onClick={handleExportExcel}
             disabled={!tanggal && !latestDateStr}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-md px-4 py-2.5 text-sm font-medium transition-colors h-[38px]"
+            className="inline-flex h-[38px] items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:border-pupuk-darkBlue hover:text-pupuk-darkBlue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pupuk-darkBlue/30 disabled:opacity-40"
           >
-            <FileSpreadsheet className="w-4 h-4" />
+            <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
             Unduh Excel
           </button>
         </div>
       </div>
 
-      <div className="mb-6">
+      <div className="mt-4 space-y-3">
         <UploadCompletenessBanner status={uploadStatus} />
+        <UnmappedPlantsBanner />
       </div>
 
-      <UnmappedPlantsBanner />
-      <MapDashboard data={mapData} selectedProvince={provinceFilter} onSelectProvince={updateProvince} />
-      <StockSummaryCards data={filteredData} loading={loading} />
-      <StockTable data={filteredData} loading={loading} tipePupuk={tipePupuk} />
+      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <MapDashboard
+          data={rawData}
+          selectedProvince={provinceFilter}
+          onSelectProvince={updateProvince}
+          safetyStockByProvinsi={safetyByProvinsi}
+          tipePupuk={mapTipePupuk}
+          onTipePupukChange={setMapTipePupuk}
+        />
+        <StockSummaryCards data={filteredData} loading={loading} />
+      </div>
+
+      <div className="mt-6">
+        <StockTable data={filteredData} loading={loading} tipePupuk={tipePupuk} />
+      </div>
     </div>
   );
 }

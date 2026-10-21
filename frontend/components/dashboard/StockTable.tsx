@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, PackageOpen } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 export interface StockCalc {
@@ -33,6 +33,11 @@ interface StockTableProps {
   loading?: boolean;
   tipePupuk?: string;
 }
+
+const PUPUK_DOT: Record<string, string> = {
+  Urea: "bg-blue-500",
+  NPK: "bg-emerald-500",
+};
 
 export function StockTable({ data, loading = false, tipePupuk = "Semua" }: StockTableProps) {
   const [expandedProv, setExpandedProv] = useState<Record<string, boolean>>({});
@@ -66,38 +71,45 @@ export function StockTable({ data, loading = false, tipePupuk = "Semua" }: Stock
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-      <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-          <PackageOpen className="w-5 h-5 text-pupuk-darkBlue" />
-          Detail Stok Per Lokasi
-        </h3>
-        <span className="text-xs text-gray-500">
-          Filter pupuk: <b>{tipePupuk}</b>
+    <section
+      aria-labelledby="detail-stok"
+      className="overflow-hidden rounded-lg border border-slate-200 bg-white"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-200 px-5 py-4">
+        <h2 id="detail-stok" className="text-sm font-semibold text-slate-800">
+          Detail Stok per Lokasi
+        </h2>
+        <span className="text-xs text-slate-400">
+          Filter pupuk: <b className="font-semibold text-slate-600">{tipePupuk}</b>
         </span>
       </div>
 
-      <div className="p-4">
+      <div className="p-4 sm:p-5">
         {loading ? (
-          <div className="text-center py-8 text-gray-400">Memuat data...</div>
+          <p className="py-10 text-center text-sm text-slate-400">Memuat data&hellip;</p>
         ) : data.length === 0 ? (
-          <div className="text-center py-8 text-gray-400">
+          <p className="py-10 text-center text-sm text-slate-400">
             Belum ada data stok untuk kombinasi filter saat ini.
-          </div>
+          </p>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {Object.keys(grouped).sort().map((prov) => (
-              <div key={prov} className="border border-gray-200 rounded-lg overflow-hidden">
+              <div key={prov} className="overflow-hidden rounded-md border border-slate-200">
                 <button
+                  type="button"
                   onClick={() => toggleProv(prov)}
-                  className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left font-semibold text-gray-800"
+                  className="flex w-full items-center justify-between bg-slate-50/60 p-3 text-left text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-pupuk-darkBlue/30"
                 >
-                  <div className="flex items-center gap-2">
-                    {expandedProv[prov] ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronRight className="w-5 h-5 text-gray-500" />}
+                  <span className="flex items-center gap-2">
+                    {expandedProv[prov] ? (
+                      <ChevronDown className="h-4 w-4 text-slate-500" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-slate-500" />
+                    )}
                     {prov}
-                  </div>
-                  <span className="text-xs bg-white px-2 py-1 rounded-full border text-gray-500 font-medium">
-                    {Object.keys(grouped[prov]).length} Kota
+                  </span>
+                  <span className="text-[11px] font-medium text-slate-500">
+                    {Object.keys(grouped[prov]).length} kota
                   </span>
                 </button>
 
@@ -106,74 +118,82 @@ export function StockTable({ data, loading = false, tipePupuk = "Semua" }: Stock
                     {Object.keys(grouped[prov]).sort().map((kota) => {
                       const kotaKey = `${prov}-${kota}`;
                       return (
-                        <div key={kotaKey} className="border-t border-gray-100">
+                        <div key={kotaKey} className="border-t border-slate-100">
                           <button
+                            type="button"
                             onClick={() => toggleKota(prov, kota)}
-                            className="w-full flex items-center justify-between p-3 pl-10 hover:bg-gray-50 transition-colors text-left text-sm font-medium text-gray-700"
+                            className="flex w-full items-center justify-between p-3 pl-9 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-pupuk-darkBlue/30"
                           >
-                            <div className="flex items-center gap-2">
-                              {expandedKota[kotaKey] ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+                            <span className="flex items-center gap-2">
+                              {expandedKota[kotaKey] ? (
+                                <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                              ) : (
+                                <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                              )}
                               {kota}
-                            </div>
-                            <span className="text-xs text-gray-400">
-                              {Object.keys(grouped[prov][kota]).length} Gudang
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                              {Object.keys(grouped[prov][kota]).length} gudang
                             </span>
                           </button>
 
                           {expandedKota[kotaKey] && (
-                            <div className="bg-gray-50/50 p-4 pl-16 border-t border-gray-100">
-                              <div className="space-y-4">
-                                {Object.keys(grouped[prov][kota]).sort().map((gudangKey) => {
-                                  const [gudangId, namaGudang, kodePlants] = gudangKey.split("|");
-                                  const stocks = grouped[prov][kota][gudangKey];
-                                  const displayName = kodePlants ? `${namaGudang} - ${kodePlants}` : namaGudang;
+                            <div className="space-y-3 border-t border-slate-100 bg-slate-50/40 p-3 pl-6 sm:pl-9">
+                              {Object.keys(grouped[prov][kota]).sort().map((gudangKey) => {
+                                const [gudangId, namaGudang, kodePlants] = gudangKey.split("|");
+                                const stocks = grouped[prov][kota][gudangKey];
+                                const displayName = kodePlants ? `${namaGudang} - ${kodePlants}` : namaGudang;
 
-                                  return (
-                                    <div key={gudangId} className="bg-white border border-gray-200 rounded-md overflow-hidden shadow-sm">
-                                      <div className="bg-gray-100 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
-                                        <Link href={`/dashboard/gudang/${gudangId}`} className="text-sm font-bold text-pupuk-darkBlue hover:underline hover:text-pupuk-turquoise flex items-center gap-2">
-                                          {displayName}
-                                          <span className="text-xs bg-pupuk-darkBlue text-white px-2 py-0.5 rounded-full font-normal">Lihat Detail & CCTV &rarr;</span>
-                                        </Link>
-                                      </div>
-                                      <div className="overflow-x-auto">
-                                        <table className="w-full text-xs text-left text-gray-500">
-                                          <thead className="text-gray-700 uppercase bg-gray-50 border-b">
-                                            <tr>
-                                              <th className="px-4 py-2">Jenis</th>
-                                              <th className="px-4 py-2 text-right">Fisik (Ton)</th>
-                                              <th className="px-4 py-2 text-right">Out. SO (Ton)</th>
-                                              <th className="px-4 py-2 text-right">Admin (T. Intransit)</th>
-                                              <th className="px-4 py-2 text-right">Intransit (Ton)</th>
-                                              <th className="px-4 py-2 text-right text-pupuk-darkBlue">Admin (Ton)</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {stocks.map((row) => (
-                                              <tr key={row.id} className="border-b last:border-0 hover:bg-gray-50">
-                                                <td className="px-4 py-2">
-                                                  <span className={`px-2 py-1 rounded-full text-[10px] font-medium ${
-                                                    row.tipe_pupuk === "Urea" ? "bg-blue-100 text-blue-800"
-                                                      : row.tipe_pupuk === "NPK" ? "bg-green-100 text-green-800"
-                                                      : "bg-gray-100 text-gray-800"
-                                                  }`}>
-                                                    {row.tipe_pupuk}
-                                                  </span>
-                                                </td>
-                                                <td className="px-4 py-2 text-right">{fmt(row.stok_fisik)}</td>
-                                                <td className="px-4 py-2 text-right">{fmt(row.outstanding_so)}</td>
-                                                <td className="px-4 py-2 text-right">{fmt(row.stok_admin_tanpa_intransit)}</td>
-                                                <td className="px-4 py-2 text-right">{fmt(row.intransit)}</td>
-                                                <td className="px-4 py-2 text-right font-bold text-pupuk-darkBlue">{fmt(row.stok_admin)}</td>
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
+                                return (
+                                  <div key={gudangId} className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                                    <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-2">
+                                      <Link
+                                        href={`/dashboard/gudang/${gudangId}`}
+                                        className="flex items-center gap-2 text-sm font-semibold text-pupuk-darkBlue hover:text-pupuk-turquoise focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pupuk-darkBlue/30"
+                                      >
+                                        {displayName}
+                                        <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                                          Detail, CCTV &rarr;
+                                        </span>
+                                      </Link>
                                     </div>
-                                  );
-                                })}
-                              </div>
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-left text-xs tabular-nums">
+                                        <thead className="border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                                          <tr>
+                                            <th className="px-4 py-2 font-semibold">Jenis</th>
+                                            <th className="px-4 py-2 text-right font-semibold">Fisik (Ton)</th>
+                                            <th className="px-4 py-2 text-right font-semibold">Out. SO (Ton)</th>
+                                            <th className="px-4 py-2 text-right font-semibold">Admin (tanpa intransit)</th>
+                                            <th className="px-4 py-2 text-right font-semibold">Intransit (Ton)</th>
+                                            <th className="px-4 py-2 text-right font-semibold text-pupuk-darkBlue">Admin (Ton)</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {stocks.map((row) => (
+                                            <tr key={row.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                                              <td className="px-4 py-2">
+                                                <span className="inline-flex items-center gap-1.5 text-slate-600">
+                                                  <span
+                                                    className={`h-1.5 w-1.5 rounded-full ${PUPUK_DOT[row.tipe_pupuk] ?? "bg-slate-400"}`}
+                                                    aria-hidden="true"
+                                                  />
+                                                  {row.tipe_pupuk}
+                                                </span>
+                                              </td>
+                                              <td className="px-4 py-2 text-right text-slate-600">{fmt(row.stok_fisik)}</td>
+                                              <td className="px-4 py-2 text-right text-slate-600">{fmt(row.outstanding_so)}</td>
+                                              <td className="px-4 py-2 text-right text-slate-600">{fmt(row.stok_admin_tanpa_intransit)}</td>
+                                              <td className="px-4 py-2 text-right text-slate-600">{fmt(row.intransit)}</td>
+                                              <td className="px-4 py-2 text-right font-semibold text-pupuk-darkBlue">{fmt(row.stok_admin)}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -186,6 +206,6 @@ export function StockTable({ data, loading = false, tipePupuk = "Semua" }: Stock
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

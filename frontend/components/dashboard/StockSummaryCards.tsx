@@ -1,7 +1,5 @@
 "use client";
 
-import { Box, PackageOpen, Truck, Warehouse, ClipboardCheck } from "lucide-react";
-
 interface StockCalc {
   stok_fisik: number;
   outstanding_so: number;
@@ -36,28 +34,45 @@ export function StockSummaryCards({ data, loading = false }: StockSummaryCardsPr
   const fmt = (n: number) => n.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const summaries = [
-    { title: "Stok Fisik", value: fmt(totals.stok_fisik), unit: "Ton", icon: Box, color: "bg-blue-500" },
-    { title: "Outstanding SO", value: fmt(totals.outstanding_so), unit: "Ton", icon: PackageOpen, color: "bg-orange-500" },
-    { title: "Admin Tanpa Intransit", value: fmt(totals.stok_admin_tanpa_intransit), unit: "Ton", icon: Warehouse, color: "bg-pupuk-darkGreen" },
-    { title: "Intransit", value: fmt(totals.intransit), unit: "Ton", icon: Truck, color: "bg-pupuk-turquoise" },
-    { title: "Stok Admin", value: fmt(totals.stok_admin), unit: "Ton", icon: ClipboardCheck, color: "bg-pupuk-darkBlue" },
+    { title: "Stok Fisik", value: totals.stok_fisik, emphasis: false },
+    { title: "Outstanding SO", value: totals.outstanding_so, emphasis: false },
+    { title: "Admin tanpa intransit", value: totals.stok_admin_tanpa_intransit, emphasis: false },
+    { title: "Intransit", value: totals.intransit, emphasis: false },
+    { title: "Stok Admin", value: totals.stok_admin, emphasis: true },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-      {summaries.map((item, idx) => (
-        <div key={idx} className="bg-white rounded-lg p-4 shadow-sm border border-gray-100 flex items-center space-x-4">
-          <div className={`${item.color} p-3 rounded-full text-white`}>
-            <item.icon className="w-6 h-6" />
+    <section
+      aria-labelledby="ringkasan-stok"
+      className="flex flex-col self-start rounded-lg border border-slate-200 bg-white xl:sticky xl:top-4"
+    >
+      <div className="flex items-baseline justify-between border-b border-slate-200 px-5 py-4">
+        <h2 id="ringkasan-stok" className="text-sm font-semibold text-slate-800">
+          Ringkasan Stok
+        </h2>
+        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Ton</span>
+      </div>
+
+      <dl className="divide-y divide-slate-100">
+        {summaries.map((item) => (
+          <div key={item.title} className="flex items-baseline justify-between gap-4 px-5 py-3">
+            <dt className={`text-sm ${item.emphasis ? "font-semibold text-slate-800" : "text-slate-500"}`}>
+              {item.title}
+            </dt>
+            <dd
+              className={`tabular-nums text-right text-lg font-semibold ${
+                item.emphasis ? "text-pupuk-darkBlue" : "text-slate-700"
+              }`}
+            >
+              {loading ? <span className="text-slate-300">&mdash;</span> : fmt(item.value)}
+            </dd>
           </div>
-          <div>
-            <p className="text-sm text-gray-500 font-medium">{item.title}</p>
-            <p className="text-2xl font-bold text-gray-800">
-              {loading ? "..." : item.value} <span className="text-sm text-gray-400 font-normal">{item.unit}</span>
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </dl>
+
+      <p className="mt-auto border-t border-slate-100 px-5 py-3 text-[11px] leading-relaxed text-slate-400">
+        Total dari gudang yang lolos filter aktif.
+      </p>
+    </section>
   );
 }

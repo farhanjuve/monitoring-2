@@ -52,6 +52,14 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        paper: "hsl(var(--paper))",
+        map: {
+          ok: "var(--map-ok)",
+          warn: "var(--map-warn)",
+          low: "var(--map-low)",
+          none: "var(--map-none)",
+          bg: "var(--map-bg)",
+        },
         // Custom Theme Colors
         pupuk: {
           darkGreen: "#004d40",
@@ -59,6 +67,10 @@ const config = {
           turquoise: "#40e0d0",
           blue: "#007bff",
         }
+      },
+      fontFamily: {
+        sans: ["var(--font-body)", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "var(--font-body)", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",

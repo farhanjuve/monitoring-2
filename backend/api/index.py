@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-from app.api.routes import auth, stocks, master_data, photos, slides, indigo
+from app.api.routes import auth, stocks, master_data, photos, slides, indigo, safety_stock
 
 app = FastAPI(title="Pupuk Monitor API")
 
@@ -24,6 +24,7 @@ app.include_router(master_data.router, prefix="/api/master-data", tags=["Master 
 app.include_router(photos.router, prefix="/api/photos", tags=["Photos"])
 app.include_router(slides.router, prefix="/api/slides", tags=["Slides"])
 app.include_router(indigo.router, prefix="/api/indigo", tags=["INDIGO"])
+app.include_router(safety_stock.router, prefix="/api/safety-stock", tags=["Safety Stock"])
 
 mock_storage_path = os.path.join(os.getcwd(), "storage", "mock-storage")
 os.makedirs(mock_storage_path, exist_ok=True)

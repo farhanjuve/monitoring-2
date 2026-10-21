@@ -35,45 +35,36 @@
     --ring: 210 100% 12%;
 
     --radius: 0.5rem;
-  }
 
-  .dark {
-    /* Background: Dark Green (#004d40) base */
-    --background: 170 100% 15%;
-    --foreground: 210 40% 98%;
-
-    --card: 170 80% 12%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 170 80% 12%;
-    --popover-foreground: 210 40% 98%;
-
-    /* Primary: Turquoise */
-    --primary: 174 72% 56%;
-    --primary-foreground: 210 100% 12%;
-
-    /* Secondary: Dark Blue */
-    --secondary: 210 100% 12%;
-    --secondary-foreground: 210 40% 98%;
-
-    --accent: 211 100% 50%;
-    --accent-foreground: 210 40% 98%;
-
-    --muted: 170 60% 20%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 170 60% 20%;
-    --input: 170 60% 20%;
-    --ring: 174 72% 56%;
+    /* Map + surface tokens */
+    --paper: 210 25% 98%;
+    --map-ok: #0b4b36;
+    --map-warn: #eab308;
+    --map-low: #ef4444;
+    --map-none: #d1d5db;
+    --map-bg: #f1f5f9;
+    --map-hover-ok: #00a859;
+    --map-hover-low: #f97316;
+    --map-hover-none: #9ca3af;
+    --map-ink: #111827;
+    --map-stroke: #ffffff;
   }
 }
 
 @layer base {
+  html,
+  body {
+    overflow-x: clip;
+  }
   * {
     @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
   }
 }

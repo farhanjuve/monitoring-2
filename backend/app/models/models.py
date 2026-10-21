@@ -28,11 +28,14 @@ class WarehousePlant(Base):
 
 class SafetyStock(Base):
     __tablename__ = "safety_stock"
-    
+    __table_args__ = (UniqueConstraint("kode_kab", "bulan", "tahun", name="uq_safety_kodekab_bulan_tahun"),)
+
     id = Column(Integer, primary_key=True, index=True)
-    kode_kab = Column(Integer, unique=True, index=True, nullable=False)
+    kode_kab = Column(Integer, index=True, nullable=False)
     kabupaten = Column(String(100))
     provinsi = Column(String(100))
+    bulan = Column(Integer, nullable=False)
+    tahun = Column(Integer, nullable=False)
     ss_urea = Column(Float, default=0.0)
     ss_npk = Column(Float, default=0.0)
     ss_npk_kakao = Column(Float, default=0.0)

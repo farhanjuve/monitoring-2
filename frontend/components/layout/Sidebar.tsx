@@ -1,37 +1,78 @@
-import Link from "next/link";
-import { LayoutDashboard, Upload, History, Truck, Presentation, Warehouse, Radar } from "lucide-react";
+"use client";
 
-export function Sidebar() {
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LayoutDashboard, Upload, History, Truck, Presentation, Warehouse, Radar, Map as MapIcon, X } from "lucide-react";
+
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export function Sidebar({ open, onClose }: SidebarProps) {
+  const pathname = usePathname();
   const menus = [
     { name: "Dashboard", icon: LayoutDashboard, href: "/" },
     { name: "Intransit", icon: Truck, href: "/intransit" },
     { name: "Upload Data SAP", icon: Upload, href: "/upload" },
     { name: "Data Gudang", icon: Warehouse, href: "/data-gudang" },
     { name: "INDIGO Tracker", icon: Radar, href: "/indigo" },
+    { name: "Peta 38 Provinsi", icon: MapIcon, href: "/peta-38" },
     { name: "Log Aktivitas", icon: History, href: "/logs" },
     { name: "Generator Slide", icon: Presentation, href: "/slides" },
   ];
 
   return (
-    <aside className="w-64 bg-pupuk-darkBlue text-white min-h-screen flex flex-col shadow-lg">
-      <div className="p-6 border-b border-white/10">
-        <h2 className="text-2xl font-bold text-pupuk-turquoise">Pupuk Monitor</h2>
-      </div>
-      <nav className="flex-1 p-4 space-y-2">
-        {menus.map((menu) => (
-          <Link
-            key={menu.name}
-            href={menu.href}
-            className="flex items-center space-x-3 px-4 py-3 rounded-md hover:bg-pupuk-darkGreen hover:text-pupuk-turquoise transition-colors"
+    <>
+      <div
+        aria-hidden="true"
+        onClick={onClose}
+        className={`fixed inset-0 z-30 bg-black/40 transition-opacity md:hidden ${
+          open ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      />
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-pupuk-darkBlue text-white shadow-lg transition-transform duration-200 ease-out md:static md:translate-x-0 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-white/10 p-6">
+          <h2 className="text-2xl font-bold text-pupuk-turquoise">Pupuk Monitor</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-white/70 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pupuk-turquoise md:hidden"
+            aria-label="Tutup menu"
           >
-            <menu.icon className="w-5 h-5" />
-            <span>{menu.name}</span>
-          </Link>
-        ))}
-      </nav>
-      <div className="p-4 border-t border-white/10 text-xs text-white/50 text-center">
-        &copy; 2026 Pupuk Monitor
-      </div>
-    </aside>
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <nav className="flex-1 space-y-2 p-4">
+          {menus.map((menu) => {
+            const active =
+              menu.href === "/" ? pathname === "/" : pathname.startsWith(menu.href);
+            return (
+              <Link
+                key={menu.name}
+                href={menu.href}
+                onClick={onClose}
+                aria-current={active ? "page" : undefined}
+                className={`flex items-center space-x-3 rounded-md px-4 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pupuk-turquoise ${
+                  active
+                    ? "bg-pupuk-darkGreen text-pupuk-turquoise"
+                    : "hover:bg-pupuk-darkGreen hover:text-pupuk-turquoise"
+                }`}
+              >
+                <menu.icon className="h-5 w-5" />
+                <span>{menu.name}</span>
+              </Link>
+            );
+          })}
+        </nav>
+        <div className="border-t border-white/10 p-4 text-center text-xs text-white/50">
+          &copy; 2026 Pupuk Monitor
+        </div>
+      </aside>
+    </>
   );
 }

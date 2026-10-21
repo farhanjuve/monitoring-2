@@ -17,7 +17,7 @@ export default function SlidesPage() {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-pupuk-darkBlue dark:text-pupuk-turquoise mb-1 flex items-center gap-3">
+        <h1 className="text-3xl font-bold text-pupuk-darkBlue mb-1 flex items-center gap-3">
           <Presentation className="w-8 h-8 text-pupuk-turquoise" />
           Generator Laporan Slide
         </h1>
