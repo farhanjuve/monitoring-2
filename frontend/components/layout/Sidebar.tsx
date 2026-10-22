@@ -17,7 +17,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     { name: "Upload Data SAP", icon: Upload, href: "/upload" },
     { name: "Data Gudang", icon: Warehouse, href: "/data-gudang" },
     { name: "INDIGO Tracker", icon: Radar, href: "/indigo" },
-    { name: "Peta 38 Provinsi", icon: MapIcon, href: "/peta-38" },
+    { name: "Peta Manual", icon: MapIcon, href: "/peta-38" },
     { name: "Log Aktivitas", icon: History, href: "/logs" },
     { name: "Generator Slide", icon: Presentation, href: "/slides" },
   ];

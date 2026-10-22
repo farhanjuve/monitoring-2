@@ -7,7 +7,7 @@ import "react-tooltip/dist/react-tooltip.css";
 import type { StockCalc } from "./StockTable";
 import { normalizeProvince } from "@/lib/province";
 
-const DEFAULT_GEO_URL = "/indonesia-province-simple.json";
+const DEFAULT_GEO_URL = "/indonesia-38-provinces.geojson";
 
 export const MAP_PUPUK_OPTIONS = ["Semua", "Urea", "NPK", "NPK Kakao", "ZA", "SP-36", "Organik"];
 

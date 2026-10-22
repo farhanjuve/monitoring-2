@@ -9,7 +9,7 @@ Endpoints untuk:
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import func
 from datetime import date
 from typing import List, Optional
@@ -198,6 +198,9 @@ def get_stocks(
         query = query.filter(StockCalculation.tipe_pupuk == tipe_pupuk)
     
     query = query.order_by(StockCalculation.gudang_id, StockCalculation.tipe_pupuk)
+    query = query.options(
+        joinedload(StockCalculation.warehouse).selectinload(Warehouse.plants)
+    )
     
     return query.all()
 

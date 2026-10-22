@@ -308,6 +308,7 @@ export default function Home() {
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <MapDashboard
           data={rawData}
+          geoUrl="/indonesia-38-provinces.geojson"
           selectedProvince={provinceFilter}
           onSelectProvince={updateProvince}
           safetyStockByProvinsi={safetyByProvinsi}
