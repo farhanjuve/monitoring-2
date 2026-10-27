@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 import { Tooltip } from "react-tooltip";
 import "react-tooltip/dist/react-tooltip.css";
@@ -48,47 +48,44 @@ export function MapDashboard({
   safetyStockByProvinsi,
   geoUrl = DEFAULT_GEO_URL,
 }: MapDashboardProps) {
-  const [tooltipContent, setTooltipContent] = useState("");
-
   const provinceAgg = useMemo(() => {
-    const map = new Map<string, { label: string; stokAdmin: number; stokUrea: number; stokNpk: number }>();
+    const map = new Map<string, { label: string; stokByTipe: Record<string, number> }>();
     data.forEach((row) => {
       const label = row.provinsi || "Tidak Diketahui";
       const key = normalizeProvince(label);
       const prev = map.get(key);
       const rowStok = row.stok_admin || 0;
       if (prev) {
-        prev.stokAdmin += rowStok;
-        if (row.tipe_pupuk === "Urea") prev.stokUrea += rowStok;
-        if (row.tipe_pupuk === "NPK") prev.stokNpk += rowStok;
+        prev.stokByTipe[row.tipe_pupuk] = (prev.stokByTipe[row.tipe_pupuk] ?? 0) + rowStok;
       } else {
-        map.set(key, {
-          label,
-          stokAdmin: rowStok,
-          stokUrea: row.tipe_pupuk === "Urea" ? rowStok : 0,
-          stokNpk: row.tipe_pupuk === "NPK" ? rowStok : 0,
-        });
+        map.set(key, { label, stokByTipe: { [row.tipe_pupuk]: rowStok } });
       }
     });
     return map;
   }, [data]);
 
+  const stockForType = (agg: { stokByTipe: Record<string, number> } | undefined, jenis: string) => {
+    if (!agg) return 0;
+    // "Semua" mengikuti safety stock Urea + NPK (lihat PRD).
+    if (jenis === "Semua") return (agg.stokByTipe.Urea ?? 0) + (agg.stokByTipe.NPK ?? 0);
+    return agg.stokByTipe[jenis] ?? 0;
+  };
+
+  const safetyTarget = (safety: SafetyProvinsi | undefined) => {
+    if (!safety) return 0;
+    if (tipePupuk === "Semua") return safety.ss_urea + safety.ss_npk;
+    const col = PUPUK_TO_SS[tipePupuk];
+    return col ? safety[col] ?? 0 : 0;
+  };
+
   const ratio = (key: string) => {
     const agg = provinceAgg.get(key);
-    const safety = safetyStockByProvinsi?.[key];
     if (!agg) return null;
 
-    let target: number;
-    if (tipePupuk === "Semua") {
-      target = safety ? safety.ss_urea + safety.ss_npk : 0;
-    } else {
-      const col = PUPUK_TO_SS[tipePupuk];
-      target = safety && col ? safety[col] ?? 0 : 0;
-    }
+    const target = safetyTarget(safetyStockByProvinsi?.[key]);
     if (target <= 0) return null;
 
-    const stok = tipePupuk === "Semua" ? agg.stokUrea + agg.stokNpk : agg.stokAdmin;
-    return stok / target;
+    return stockForType(agg, tipePupuk) / target;
   };
 
   const fillColor = (key: string, hasStock: boolean) => {
@@ -170,34 +167,26 @@ export function MapDashboard({
                 const isSelected = selectedProvince === provinceKey;
                 const r = ratio(provinceKey);
                 const safety = safetyStockByProvinsi?.[provinceKey];
+                const status = !hasData
+                  ? "Belum Ada Data Stok"
+                  : r == null
+                    ? "Ada Data, Safety Stock N/A"
+                    : r >= 1
+                      ? "Stok >= Safety Stock"
+                      : r >= 0.7
+                        ? "Stok Mendekati Safety Stock"
+                        : "Stok Di Bawah Safety Stock";
+                const sl = safetyLabel(safety);
+                const safetyLine = sl ? `${sl.label}: ${fmt(sl.value)} Ton<br/>` : "Safety Stock: -<br/>";
+                const ratioLine = r != null ? `Rasio Stok / Safety: ${fmt(r * 100)}%` : `Rasio Stok / Safety: -`;
+                const stokLabel = tipePupuk === "Semua" ? "Stok Admin (Urea+NPK)" : `Stok Admin (${tipePupuk})`;
+                const stokValue = hasData ? `${fmt(stockForType(agg, tipePupuk))} Ton` : "-";
+                const tooltipHtml = `<b>${provinceName}</b><br/>Status: ${status}<br/>${stokLabel}: ${stokValue}<br/>${safetyLine}${ratioLine}`;
 
                 return (
                   <Geography
                     key={geo.rsmKey}
                     geography={geo}
-                    onMouseEnter={() => {
-                      const status = !hasData
-                        ? "Belum Ada Data Stok"
-                        : r == null
-                          ? "Ada Data, Safety Stock N/A"
-                          : r >= 1
-                            ? "Stok >= Safety Stock"
-                            : r >= 0.7
-                              ? "Stok Mendekati Safety Stock"
-                              : "Stok Di Bawah Safety Stock";
-                      const sl = safetyLabel(safety);
-                      const safetyLine = sl
-                        ? `${sl.label}: ${fmt(sl.value)} Ton<br/>`
-                        : "Safety Stock: -<br/>";
-                      const ratioLine =
-                        r != null ? `Rasio Stok / Safety: ${fmt(r * 100)}%` : `Rasio Stok / Safety: -`;
-                      setTooltipContent(
-                        `<b>${provinceName}</b><br/>Status: ${status}<br/>Stok Admin: ${
-                          hasData ? `${fmt(agg!.stokAdmin)} Ton` : "-"
-                        }<br/>${safetyLine}${ratioLine}`
-                      );
-                    }}
-                    onMouseLeave={() => setTooltipContent("")}
                     onClick={() => onSelectProvince(isSelected ? "" : provinceKey)}
                     style={{
                       default: {
@@ -223,7 +212,7 @@ export function MapDashboard({
                       },
                     }}
                     data-tooltip-id="map-tooltip"
-                    data-tooltip-html={tooltipContent}
+                    data-tooltip-html={tooltipHtml}
                   />
                 );
               })
