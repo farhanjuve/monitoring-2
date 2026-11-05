@@ -43,6 +43,7 @@ class StockCalculationOut(BaseModel):
     kode_plants: Optional[str] = None
     kota: Optional[str] = None
     provinsi: Optional[str] = None
+    is_active: bool = True
     tipe_pupuk: str
     stok_fisik: float
     outstanding_so: float

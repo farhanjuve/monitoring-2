@@ -58,6 +58,7 @@ const config = {
           warn: "var(--map-warn)",
           low: "var(--map-low)",
           none: "var(--map-none)",
+          na: "var(--map-na)",
           bg: "var(--map-bg)",
         },
         // Custom Theme Colors

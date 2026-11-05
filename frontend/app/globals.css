@@ -42,10 +42,13 @@
     --map-warn: #eab308;
     --map-low: #ef4444;
     --map-none: #d1d5db;
+    /* Ada stok, tetapi provinsi belum punya safety stock */
+    --map-na: #9ca3af;
     --map-bg: #f1f5f9;
     --map-hover-ok: #00a859;
     --map-hover-low: #f97316;
-    --map-hover-none: #9ca3af;
+    --map-hover-none: #b9c0ca;
+    --map-hover-na: #6b7280;
     --map-ink: #111827;
     --map-stroke: #ffffff;
   }

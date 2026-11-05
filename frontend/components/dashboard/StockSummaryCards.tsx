@@ -11,9 +11,16 @@ interface StockCalc {
 interface StockSummaryCardsProps {
   data: StockCalc[];
   loading?: boolean;
+  factory?: FactorySummary | null;
 }
 
-export function StockSummaryCards({ data, loading = false }: StockSummaryCardsProps) {
+export interface FactorySummary {
+  fisik: number;
+  intransit: number;
+  plant: number;
+}
+
+export function StockSummaryCards({ data, loading = false, factory = null }: StockSummaryCardsProps) {
   const totals = data.reduce(
     (acc, row) => ({
       stok_fisik: acc.stok_fisik + row.stok_fisik,
@@ -69,6 +76,30 @@ export function StockSummaryCards({ data, loading = false }: StockSummaryCardsPr
           </div>
         ))}
       </dl>
+
+      {factory && (
+        <div className="border-t border-slate-200 px-5 py-3">
+          <div className="flex items-baseline justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Stok pabrik</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                {factory.plant.toLocaleString("id-ID")} plant di luar master gudang
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="tabular-nums text-lg font-semibold text-slate-700">
+                {loading ? <span className="text-slate-300">&mdash;</span> : fmt(factory.fisik)}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                intransit {loading ? "—" : fmt(factory.intransit)}
+              </p>
+            </div>
+          </div>
+          <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
+            Stok MB52 pada plant yang belum punya gudang. Tidak terpengaruh filter di atas.
+          </p>
+        </div>
+      )}
 
       <p className="mt-auto border-t border-slate-100 px-5 py-3 text-[11px] leading-relaxed text-slate-400">
         Total dari gudang yang lolos filter aktif.

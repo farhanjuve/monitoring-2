@@ -131,6 +131,10 @@ class StockCalculation(Base):
             return "/".join(sorted([p.kode_plant for p in self.warehouse.plants]))
         return ""
 
+    @property
+    def is_active(self):
+        return bool(self.warehouse.is_active) if self.warehouse else True
+
 class Photo(Base):
     __tablename__ = "photos"
     __table_args__ = (Index('ix_photos_tanggal_gudang', 'tanggal', 'gudang_id'),)

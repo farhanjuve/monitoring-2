@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Search, FileSpreadsheet } from "lucide-react";
-import { StockSummaryCards } from "@/components/dashboard/StockSummaryCards";
+import { StockSummaryCards, type FactorySummary } from "@/components/dashboard/StockSummaryCards";
 import { StockTable, type StockCalc } from "@/components/dashboard/StockTable";
 import { MapDashboard, type SafetyProvinsi } from "@/components/dashboard/MapDashboard";
 import { UnmappedPlantsBanner } from "@/components/dashboard/UnmappedPlantsBanner";
@@ -34,6 +34,7 @@ export default function Home() {
   const [uploadStatus, setUploadStatus] = useState<UploadCompletenessStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [safetyByProvinsi, setSafetyByProvinsi] = useState<Record<string, SafetyProvinsi>>({});
+  const [factorySummary, setFactorySummary] = useState<FactorySummary | null>(null);
   const cacheRef = useRef<Record<string, StockCalc[]>>({});
   const uploadStatusCacheRef = useRef<Record<string, UploadCompletenessStatus>>({});
 
@@ -136,6 +137,24 @@ export default function Home() {
     };
 
     loadUploadStatus();
+  }, [tanggal, latestDateStr]);
+
+  useEffect(() => {
+    const selectedDate = tanggal || latestDateStr || "";
+    if (!selectedDate) return;
+    let active = true;
+    fetch(`${API_BASE_URL}/api/stocks/coverage?tanggal=${selectedDate}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active) return;
+        setFactorySummary(data?.pabrik ?? null);
+      })
+      .catch(() => {
+        if (active) setFactorySummary(null);
+      });
+    return () => {
+      active = false;
+    };
   }, [tanggal, latestDateStr]);
 
   useEffect(() => {
@@ -315,7 +334,7 @@ export default function Home() {
           tipePupuk={mapTipePupuk}
           onTipePupukChange={setMapTipePupuk}
         />
-        <StockSummaryCards data={filteredData} loading={loading} />
+        <StockSummaryCards data={filteredData} loading={loading} factory={factorySummary} />
       </div>
 
       <div className="mt-6">

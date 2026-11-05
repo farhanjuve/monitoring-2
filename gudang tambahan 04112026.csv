@@ -1,0 +1,64 @@
+﻿kode_plant;Nama Gudang;kapasitas_ton;kode kota;Alamat
+D3CR;GD PKT BATU SANGKAR;100;1304;Jl. Prof Muhammad Yamin, Kec. Tanjung Emas Kec. Tanah Datar Prov. Sumatera Barat
+E3AM;DHARMASRAYA;130;1310;Jl. Lintas Sumatera KM. 1 Jorong Koto Gadang Kec. Sungai Dareh Kab. Dharmasraya Prov. Sumatera Barat
+B4AM;DHARMASRAYA - SUMBAR;600;1310;Jl. Lintas Sumatera KM.1, Jorong Koto Gadang Sungai Dareh-Pulau Punjung-Kab. Dharmasraya-Sumatera Barat
+F3CP;DHARMASRAYA PSP;428;1310;Jl. Lintas Sumatera KM. 1 Jorong Koto Gadang Kec. Sungai Dareh Kab. Dharmasraya Prov. Sumatera Barat
+E3AC;DC I PADANG PIM;11000;1371;Jl. Belawan Pelabuhan Teluk Bayur Kec. Padang Selatan, Kota Padang Prov. Sumatera Barat
+D290;GD PKT PADANG I;1000;1371;Jl. Belawan Pelabuhan Teluk Bayur Kec. Padang Selatan, Kota Padang Prov. Sumatera Barat
+B3H3;GPP Bukittinggi PKG;100;1375;Jl. Bung Tomo No 15 Stasiun Tarok Dipo Kec. Guguak Panjang Kota Bukittinggi Prov. Sumatera Barat
+F3DN;Jambi PSP 2;1900;1571;Jl Lingkar Selatan, Kel Kenali Asam Bawah, Kec. Kota Baru, Kota Jambi, 36128
+B3EW;PKG GD BELITANG MTP;200;1608;Jl. Raya Kotabaru Belitang KM 2,5 Martapura OKU Timur
+B3IM;PKG Lubuk Linggau 1;150;1673;tidak ada alamat
+D3HY;PKT Lubuk Linggau 1;150;1673;tidak ada alamat
+F3DM;PSP Lubuk Linggau 1;1900;1673;QV5H+W35, Sumber Agung, Kec. Lubuk Linggau Utara I, Kota Lubuklinggau, Sumatera Selatan 31617
+B221;PKG BENGKULU IV;1100;1771;48R6+RJ2, Kandang Mas, Kec. Kp. Melayu, Kota Bengkulu, Bengkulu 38216
+D2A6;UPP Lampung PKT;7500;1871;tidak ada alamat
+C3BB;Cikajang PKC;500;3205;PRF6+VQ9 Pakuwon, Kabupaten Garut, Jawa Barat
+B3HX;GD PKG Cikelet;500;3205;9MCH+J94, Cikelet, Kec. Cikelet, Kabupaten Garut, Jawa Barat 44177
+C3BM;PKC Garut 2 - Taronggeng;760;3205;RW33+JVW Haurpanggung, Kabupaten Garut, Jawa Barat
+B3IQ;PKG Cisurupan;500;3205;tidak ada alamat
+C3BJ;PKC Tasikmalaya 4;450;3206;J3HG+3V3, Sukasukur, Mangunreja, Tasikmalaya Regency, West Java 46462
+B3IJ;PKG Cipatujah;500;3206;825Q+37G, Jalan Raya, Padawaras, Cipatujah, Tasikmalaya Regency, West Java 46189
+B3EP;CBN 1KEDAWUNG PKG;1500;3209;tidak ada alamat
+C3BI;PKC Indramayu 4 - Lohbener;500;3212;Celeng Jatibarang Baru Jl. Raya Lohbener-Jatibarang Baru, Lohbener, Kec. Lohbener, Kabupaten Indramayu, Jawa Barat 45252
+B3DJ;PKG Karawang Belendung;50;3215;tidak ada alamat
+C3BL;PKC Cirebon - Kalijaga;500;3274;7H7H+XGQ Pegambiran, Kota Cirebon, Jawa Barat
+F206;UPP CILACAP;12500;3301;7X8V+J76 Port of Tanjung Intan Cilacap, Klega, Tambakreja, Cilacap Selatan, Cilacap Regency, Central Java
+D3DW;GD PKT PURWOREJO;100;3306;tidak ada alamat
+F3CQ;Wonosobo 4 PSP;300;3307;Jl. Raya Brengkok - Banjarnegara No.18, Ngebrak, Selokromo, Kec. Leksono, Kabupaten Wonosobo, Jawa Tengah 56362
+D3DY;GD PKT WONOGIRI - NAMBANGAN;100;3312;Jl. Raya Sukoharjo, Ds. Selogiri, Kec. Wonogiri, Wonogiri
+F3DL;PKG Sragen 2 - Sambungmacan;250;3314;Desa Sambungmacan, Kec. Sambungmacan, Kabupaten Sragen, Jawa Tengah
+F3DE;PSP SRAGEN 1 - NGRAMPAL;500;3314;H3X6+5FH Bener, Kabupaten Sragen, Jawa Tengah
+B3EG;GPP GROBOGAN;500;3315;Dn Depok Rt 02 Rw 02, Desa Depok, Kec Toroh Kab. Grobogan Prov Jawa Tengah
+B3IF;PKG GROBOGAN - REJOSARI;1150;3315;Jl. Raya Purwodadi - Blora, RT.5/RW2, Krajan, Getasrejo, Kec. Purwodadi, Kabupaten Grobogan, Jawa Tengah 58152
+B3IL;GPP Lasem Rembang PKG;500;3317;8C3P+XJ8, Sambong, Dorokandang, Kec. Lasem, Kabupaten Rembang, Jawa Tengah 59271
+F3DJ;PSP Rembang - Punjulharjo;500;3317;8C36+HGV, Jetakbelah, Punjulharjo, Kec. Rembang, Kabupaten Rembang, Jawa Tengah 59219
+F3DH;PSP Pati - Juwana;1350;3318;74C3+4F2, Kendingan, Purworejo, Kec. Pati, Kabupaten Pati, Jawa Tengah 59185
+F341;BGR JENARSARI;1725;3324;Desa Jenarsari Kabupaten Kendal Gemuh Kab. Kendal
+B3EE;GD BULAKAMBA;2424;3329;tidak ada alamat
+F207;UPP SEMARANG;12000;3374;Jl Deli Baru No 5, Pelabuhan Tanjung Emas, Semarang, Jawa Tengah
+D3AX;PKT GPP MALANG - PAKISAJI;200;3507;JL. RAYA GENENGAN NO.07 Ds GENENGAN PAKISAJI - MALANG
+B3DF;PKG BANYUWANGI - WATUDODOL;1000;3510;tidak ada alamat
+B3IC;PKG PI PASURUAN - KEJAYAN;3800;3514;Jalan Raya Sambisirah No.5, Desa Pacar Keling, Kec. Kejayan, Kabupaten Pasuruan
+B3ID;PKG SAMPANG - TORJUN;3300;3527;Jalan kamal - kalianget, Kec. Torjun, Kab. Sampang
+D2A5;UPP Probolinggo PKT;10000;3574;Pelabuhan DABN, Mayangan, Kec. Mayangan, Kota Probolinggo, Jawa Timur
+C3BK;PKC Pandeglang - Panimbang;926;3601;GRC5+M6V Sidamukti, Kabupaten Pandeglang, Banten
+C3BD;PKC LEBAK 3;200;3602;52QF+QM3 Cilangkahan, Kabupaten Lebak, Banten
+B3I9;PKG MALINGPING;200;3602;tidak ada alamat
+B3H9;Tangerang - Mauk 2 PKG;500;3603;tidak ada alamat
+B3IB;GD PKG LOMBOK BARAT SERUMBUNG D;4632;5201;Jl. Raya Lembar Serumbung, Desa Lembar, Kec. Lembar, Kab. Lombok Barat
+B232;UPP Lembar PKG;4200;5201;Jl. Pantai cemara Lembar Selatan, Kec, Lembar. Selatan, Kab. Lombok Barat, NTB
+B231;GD PKG Pontianak III B;1015;6102;tidak ada alamat
+D2A8;GD PKT Pontianak III B;8465;6102;Jalan Raya Wajok Kel. Wajok Hilir, Kec. Siantan, Kab. Mempawah
+B460;GD PKG KUMAI PADAT KARYA;300;6201;Pangkalan Lima Kumai Desa Batu Belahan-Arut Selatan-Kab. Kotawaringin Barat-Kalimantan Tengah
+B4DG;GD PKG TRIJAYA KOTIM;200;6202;Jl. Jendral Sudirman KM. 13,7
+B463;GD PKG KAPUAS;33;6203;Jl. Trans Kalimantan Kelurahan Selat Utara-Kapuas Kuala-Kab. Kapuas-Kalimantan Tengah
+B3H6;GD PKG PULANG PISAU II;50;6211;Jl. Ahmad Yani, Mantaren I, Kec. Kahayan Hilir, Kabupaten Pulang Pisau, Kalimantan Tengah
+B4DE;GD PKG AMPAH;30;6213;JI. Ampah - Muara Teweh Desa Puri Kab. Barito Timur (Disamping Gudang PIM Ampah - E385)
+B471;GD PKG BALIKPAPAN;66;6471;Jl Martadinata RT.22 Kelurahan Mekar Sari-Balikpapan Tengah-Kota Balikpapan-Kalimantan Timur
+B3I0;GD PKG Toili Banggai;1000;7201;G9QW+R5C Minahaki, Kabupaten Banggai, Sulawesi Tengah
+D3HQ;GD PKT Toili Banggai;1895;7201;G9QW+R5C Minahaki, Kabupaten Banggai, Sulawesi Tengah
+B3IE;GD PKG PALU II;1737;7271;Jl. Muh Amin Kel. Taipa Kec. Palu Utara Kota Palu
+D3HX;GD PKT PALU II;1737;7271;Jl. Muh Amin Kel. Taipa Kec. Palu Utara Kota Palu
+B3I2;PKG TINANGGEA KONAWE SELATAN II;1204;7405;Jl. Jend. Sudirman,Lapoa, Kec. Tinanggea, Kab. Konawe Selatan - Sulawesi Tenggara
+B3IA;GD PKG GORONTALO IV;1000;7501;JL. ADAM HOESA, DESA TALUMELITO, KEC. TELAGA BIRU, KAB. GORONTALO

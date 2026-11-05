@@ -10,7 +10,7 @@ Endpoints untuk:
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import func
+from sqlalchemy import case, func
 from datetime import date
 from typing import List, Optional
 import io
@@ -19,7 +19,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 from app.core.database import get_db
 from app.core.time import to_utc_iso
-from app.models.models import StockCalculation, SAPUpload, Warehouse, WarehousePlant
+from app.models.models import StockCalculation, SAPStock, SAPUpload, Warehouse, WarehousePlant
 from app.schemas.schemas import StockCalculationOut, StockPreview, SAPUploadOut, UploadResponse
 from app.services.sap_parser import parse_mb52, parse_zsd_sodo, preview_mb52, preview_zsd_sodo
 from app.services.stock_calculator import (
@@ -203,6 +203,132 @@ def get_stocks(
     )
     
     return query.all()
+
+
+@router.get("/coverage")
+def get_coverage(
+    tanggal: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Ringkasan cakupan monitoring untuk satu tanggal:
+      - jumlah gudang & kode plant yang dipetakan
+      - stok yang sudah masuk gudang (dari stock_calculations)
+      - "stok pabrik" = stok MB52 pada plant yang belum punya gudang (di luar master)
+
+    Gudang + pabrik = total MB52, sehingga selisih rekonsiliasi bisa dilihat langsung.
+    """
+    if not tanggal:
+        tanggal = db.query(func.max(SAPStock.tanggal)).scalar()
+    if not tanggal:
+        raise HTTPException(status_code=404, detail="Belum ada data stok SAP.")
+
+    mapped = WarehousePlant.kode_plant.isnot(None)
+    unmapped = WarehousePlant.kode_plant.is_(None)
+
+    per_komoditas = (
+        db.query(
+            SAPStock.jenis_pupuk,
+            func.coalesce(func.sum(case((mapped, SAPStock.unrestricted), else_=0.0)), 0.0),
+            func.coalesce(func.sum(case((mapped, SAPStock.intransit), else_=0.0)), 0.0),
+            func.coalesce(func.sum(case((unmapped, SAPStock.unrestricted), else_=0.0)), 0.0),
+            func.coalesce(func.sum(case((unmapped, SAPStock.intransit), else_=0.0)), 0.0),
+        )
+        .select_from(SAPStock)
+        .outerjoin(WarehousePlant, WarehousePlant.kode_plant == SAPStock.kode_plant)
+        .filter(SAPStock.tanggal == tanggal)
+        .group_by(SAPStock.jenis_pupuk)
+        .order_by(SAPStock.jenis_pupuk)
+        .all()
+    )
+
+    plant_counts = (
+        db.query(
+            func.count(
+                func.distinct(
+                    case((mapped, SAPStock.kode_plant), else_=None)
+                )
+            ),
+            func.count(
+                func.distinct(
+                    case((unmapped, SAPStock.kode_plant), else_=None)
+                )
+            ),
+            func.count(func.distinct(SAPStock.kode_plant)),
+        )
+        .select_from(SAPStock)
+        .outerjoin(WarehousePlant, WarehousePlant.kode_plant == SAPStock.kode_plant)
+        .filter(SAPStock.tanggal == tanggal)
+        .one()
+    )
+
+    stok_gudang = (
+        db.query(
+            func.coalesce(func.sum(StockCalculation.stok_fisik), 0.0),
+            func.coalesce(func.sum(StockCalculation.stok_admin), 0.0),
+            func.coalesce(func.sum(StockCalculation.intransit), 0.0),
+        )
+        .filter(StockCalculation.tanggal == tanggal)
+        .one()
+    )
+
+    gudang_total = db.query(func.count(Warehouse.id)).scalar() or 0
+    gudang_aktif = (
+        db.query(func.count(Warehouse.id)).filter(Warehouse.is_active == True).scalar() or 0
+    )
+    gudang_berstok = (
+        db.query(func.count(func.distinct(StockCalculation.gudang_id)))
+        .filter(StockCalculation.tanggal == tanggal)
+        .scalar()
+        or 0
+    )
+    kode_plant = db.query(func.count(WarehousePlant.kode_plant)).scalar() or 0
+
+    komoditas = [
+        {
+            "tipe_pupuk": row[0],
+            "gudang_fisik": round(float(row[1] or 0), 2),
+            "gudang_intransit": round(float(row[2] or 0), 2),
+            "pabrik_fisik": round(float(row[3] or 0), 2),
+            "pabrik_intransit": round(float(row[4] or 0), 2),
+            "total_fisik": round(float(row[1] or 0) + float(row[3] or 0), 2),
+        }
+        for row in per_komoditas
+    ]
+
+    pabrik_fisik = sum(item["pabrik_fisik"] for item in komoditas)
+    pabrik_intransit = sum(item["pabrik_intransit"] for item in komoditas)
+    total_fisik = sum(item["total_fisik"] for item in komoditas)
+
+    return {
+        "tanggal": tanggal.isoformat(),
+        "gudang": {
+            "total": gudang_total,
+            "aktif": gudang_aktif,
+            "dengan_stok": gudang_berstok,
+            "kode_plant": kode_plant,
+            "plant_terpetakan": plant_counts[0] or 0,
+            "plant_pabrik": plant_counts[1] or 0,
+            "plant_sap": plant_counts[2] or 0,
+        },
+        "stok_gudang": {
+            "fisik": round(float(stok_gudang[0] or 0), 2),
+            "admin": round(float(stok_gudang[1] or 0), 2),
+            "intransit": round(float(stok_gudang[2] or 0), 2),
+        },
+        "pabrik": {
+            "fisik": round(pabrik_fisik, 2),
+            "intransit": round(pabrik_intransit, 2),
+            "plant": plant_counts[1] or 0,
+        },
+        "total_sap": {
+            "fisik": round(total_fisik, 2),
+            "intransit": round(
+                sum(item["gudang_intransit"] for item in komoditas) + pabrik_intransit, 2
+            ),
+        },
+        "komoditas": komoditas,
+    }
 
 
 @router.get("/intransit-range")

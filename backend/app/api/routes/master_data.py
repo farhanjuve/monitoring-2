@@ -8,6 +8,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.plant_directory import (
+    is_official_warehouse,
+    plant_category,
+)
 from app.models.models import (
     AreaGrouping,
     Photo,
@@ -647,14 +651,65 @@ def delete_warehouse(warehouse_id: int, db: Session = Depends(get_db)):
 
 @router.get("/unmapped-plants")
 def get_unmapped_plants(db: Session = Depends(get_db)):
-    """Mengambil daftar kode plant yang ada di data SAP (MB52 / ZSD_SODO) tapi tidak ada di Master Data Gudang."""
+    """Kode plant yang perlu dipetakan ke Master Data Gudang.
+
+    Kode dianggap perlu dipetakan bila **bukan** unit internal (pabrik,
+    pelabuhan, kantor) **dan** memenuhi salah satu:
+
+    - tercantum di ``Daftar_Gudang_Bersih_...csv`` (gudang resmi), atau
+    - masih memiliki stok (unrestricted > 0) pada tanggal SAP terakhir.
+
+    Kode lama yang stoknya sudah nol dikeluarkan dari peringatan agar banner
+    hanya memuat pekerjaan mapping yang aktual. Kode akan muncul lagi secara
+    otomatis bila suatu saat kembali berstok.
+    """
     mb52_plants = {r[0] for r in db.query(SAPStock.kode_plant).distinct().all()}
     zsd_plants = {r[0] for r in db.query(SAPOutstandingDO.kode_plant).distinct().all()}
     master_plants = {r[0] for r in db.query(WarehousePlant.kode_plant).all()}
     all_sap_plants = mb52_plants.union(zsd_plants)
     unmapped = sorted(list(all_sap_plants - master_plants))
 
+    latest_date = db.query(func.max(SAPStock.tanggal)).scalar()
+    stocked_plants: Set[str] = set()
+    if latest_date:
+        stocked_plants = {
+            r[0]
+            for r in db.query(SAPStock.kode_plant)
+            .filter(SAPStock.tanggal == latest_date)
+            .group_by(SAPStock.kode_plant)
+            .having(func.sum(SAPStock.unrestricted) > 0)
+            .all()
+        }
+
+    excluded_detail: Dict[str, List[str]] = {
+        "pabrik": [],
+        "pelabuhan": [],
+        "kantor": [],
+        "tanpa_stok": [],
+    }
+    actionable: List[str] = []
+
+    for kode in unmapped:
+        kategori = plant_category(kode)
+        if kategori != "gudang":
+            excluded_detail[kategori].append(kode)
+        elif is_official_warehouse(kode) or kode in stocked_plants:
+            actionable.append(kode)
+        else:
+            excluded_detail["tanpa_stok"].append(kode)
+
+    excluded = sorted(
+        excluded_detail["pabrik"]
+        + excluded_detail["pelabuhan"]
+        + excluded_detail["kantor"]
+        + excluded_detail["tanpa_stok"]
+    )
+
     return {
-        "unmapped_count": len(unmapped),
-        "unmapped_plants": unmapped,
+        "unmapped_count": len(actionable),
+        "unmapped_plants": actionable,
+        "excluded_count": len(excluded),
+        "excluded_plants": excluded,
+        "excluded_detail": excluded_detail,
+        "as_of": latest_date.isoformat() if latest_date else None,
     }

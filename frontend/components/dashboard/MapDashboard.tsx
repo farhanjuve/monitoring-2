@@ -88,29 +88,58 @@ export function MapDashboard({
     return stockForType(agg, tipePupuk) / target;
   };
 
-  const fillColor = (key: string, hasStock: boolean) => {
-    if (!hasStock) return "var(--map-none)";
+  type MapStatus = "none" | "na" | "ok" | "warn" | "low";
+
+  const statusFor = (key: string, hasStock: boolean): MapStatus => {
+    if (!hasStock) return "none";
     const r = ratio(key);
-    if (r == null) return "var(--map-ok)";
-    if (r >= 1) return "var(--map-ok)";
-    if (r >= 0.7) return "var(--map-warn)";
-    return "var(--map-low)";
+    // Provinsi dengan stok tetapi belum punya target safety stock (mis. Papua
+    // Tengah / Papua Selatan) tidak boleh tampil hijau "aman".
+    if (r == null) return "na";
+    if (r >= 1) return "ok";
+    if (r >= 0.7) return "warn";
+    return "low";
   };
+
+  const FILL: Record<MapStatus, string> = {
+    none: "var(--map-none)",
+    na: "var(--map-na)",
+    ok: "var(--map-ok)",
+    warn: "var(--map-warn)",
+    low: "var(--map-low)",
+  };
+
+  const HOVER_FILL: Record<MapStatus, string> = {
+    none: "var(--map-hover-none)",
+    na: "var(--map-hover-na)",
+    ok: "var(--map-hover-ok)",
+    warn: "var(--map-hover-low)",
+    low: "var(--map-hover-low)",
+  };
+
+  const fillColor = (key: string, hasStock: boolean) => FILL[statusFor(key, hasStock)];
 
   const fmt = (n: number) => n.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const safetyLabel = (safety: SafetyProvinsi | undefined) => {
     if (!safety) return null;
-    if (tipePupuk === "Semua") return { label: "Safety Stock (Urea+NPK)", value: safety.ss_urea + safety.ss_npk };
-    const col = PUPUK_TO_SS[tipePupuk];
-    if (!col) return null;
-    return { label: `Safety Stock (${tipePupuk})`, value: safety[col] ?? 0 };
+    const value =
+      tipePupuk === "Semua"
+        ? safety.ss_urea + safety.ss_npk
+        : (PUPUK_TO_SS[tipePupuk] ? safety[PUPUK_TO_SS[tipePupuk]] ?? 0 : 0);
+    // Target 0 sama artinya dengan belum ada safety stock untuk jenis ini.
+    if (value <= 0) return null;
+    return {
+      label: tipePupuk === "Semua" ? "Safety Stock (Urea+NPK)" : `Safety Stock (${tipePupuk})`,
+      value,
+    };
   };
 
   const legend = [
     { label: "Stok \u2265 safety stock", color: "bg-map-ok" },
     { label: "Mendekati safety stock", color: "bg-map-warn" },
     { label: "Di bawah safety stock", color: "bg-map-low" },
+    { label: "Safety stock belum tersedia", color: "bg-map-na" },
     { label: "Belum ada data", color: "bg-map-none" },
   ];
 
@@ -196,18 +225,14 @@ export function MapDashboard({
                         strokeWidth: isSelected ? 1.8 : 0.5,
                       },
                       hover: {
-                        fill: hasData
-                          ? r != null && r < 1
-                            ? "var(--map-hover-low)"
-                            : "var(--map-hover-ok)"
-                          : "var(--map-hover-none)",
+                        fill: HOVER_FILL[statusFor(provinceKey, hasData)],
                         outline: "none",
                         stroke: "var(--map-ink)",
                         strokeWidth: 1,
                         cursor: "pointer",
                       },
                       pressed: {
-                        fill: "var(--map-ok)",
+                        fill: FILL[statusFor(provinceKey, hasData)],
                         outline: "none",
                       },
                     }}
