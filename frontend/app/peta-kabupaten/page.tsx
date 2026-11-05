@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Crosshair, Minus, Plus, Search, X } from "lucide-react";
+import { ArrowLeft, Crosshair, Download, Minus, Plus, Search, X } from "lucide-react";
 import { KabupatenMap } from "@/components/peta/KabupatenMap";
 import {
   type GeoCollection,
@@ -303,6 +303,16 @@ export default function PetaKabupatenPage() {
     if (feature) focusKabupaten(key, feature);
   };
 
+  /** Unduh laporan keterisian gudang (Excel) untuk tanggal data yang sedang tampil. */
+  const exportOccupancy = () => {
+    const query = tanggal ? `?tanggal=${encodeURIComponent(tanggal)}` : "";
+    window.open(
+      `${API_BASE_URL}/api/stocks/export-occupancy-excel${query}`,
+      "_blank",
+      "noopener",
+    );
+  };
+
   const drawerOpen = Boolean(selected || selectedFeature);
 
   return (
@@ -363,6 +373,17 @@ export default function PetaKabupatenPage() {
               </ul>
             )}
           </div>
+
+          <button
+            type="button"
+            onClick={exportOccupancy}
+            disabled={!tanggal}
+            title="Unduh laporan keterisian gudang (Excel)"
+            className="peta-focus inline-flex items-center gap-1.5 rounded-md border border-[var(--peta-border-strong)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--peta-dim)] transition-colors hover:bg-white/5 hover:text-[var(--peta-text)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="h-3.5 w-3.5" aria-hidden="true" />
+            Excel
+          </button>
 
           <button
             type="button"
