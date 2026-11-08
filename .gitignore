@@ -25,3 +25,6 @@ excel/
 .DS_Store
 Thumbs.db
 *.md
+
+# Runtime logs
+backend/storage/*.log
