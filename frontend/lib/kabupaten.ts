@@ -11,9 +11,16 @@ export interface StockRow {
   kota: string | null;
   provinsi: string | null;
   is_active?: boolean;
+  /** Ikut perhitungan keterisian nasional (lihat halaman Lingkup Nasional). */
+  is_national_included?: boolean;
   tipe_pupuk: string;
   stok_admin: number;
   stok_fisik: number;
+  /**
+   * "Transit and Transfer" dari MB52. Hanya dipakai peta keterisian gudang:
+   * ditambahkan ke stok fisik, tidak mengubah angka stok admin.
+   */
+  transit_transfer?: number;
 }
 
 export interface GeoFeature {
@@ -36,6 +43,10 @@ export interface GudangView {
   plant: string;
   stokAdmin: number;
   stokFisik: number;
+  /** Stok fisik + transit and transfer, khusus peta keterisian gudang. */
+  stokFisikTransit: number;
+  /** Nilai Transit and Transfer saja (barang menuju gudang ini). */
+  transitTransfer: number;
   kapasitas: number;
 }
 
@@ -45,6 +56,8 @@ export interface KabAgg {
   kabupaten: string;
   stokAdmin: number;
   stokFisik: number;
+  stokFisikTransit: number;
+  transitTransfer: number;
   kapasitas: number;
   gudang: Map<number, GudangView>;
 }
@@ -55,6 +68,8 @@ export interface KabView {
   kabupaten: string;
   stokAdmin: number;
   stokFisik: number;
+  stokFisikTransit: number;
+  transitTransfer: number;
   kapasitas: number;
   ratio: number | null;
   status: KabupatenStatus;
@@ -148,14 +163,21 @@ export function buildStockAgg(
   const map = new Map<string, KabAgg>();
 
   rows.forEach((row) => {
-    // Gudang nonaktif tidak ditampilkan di peta/drawer.
+    // Gudang nonaktif atau di luar Lingkup Nasional tidak ditampilkan di
+    // peta/drawer, agar angka peta sama dengan laporan keterisian nasional.
     if (row.is_active === false) return;
+    if (row.is_national_included === false) return;
 
     const key = kabupatenKey(row.kota);
     if (!key) return;
 
     const admin = Number(row.stok_admin) || 0;
     const fisik = Number(row.stok_fisik) || 0;
+    // Transit and Transfer hanya menambah basis fisik pada peta keterisian.
+    const transit = Number(row.transit_transfer) || 0;
+    // Pupuk cair bersatuan liter tidak boleh masuk rasio ton. Gudangnya tetap
+    // didaftarkan supaya kapasitasnya tetap dihitung.
+    const hitungStok = row.tipe_pupuk !== "Organik Cair";
 
     let agg = map.get(key);
     if (!agg) {
@@ -165,6 +187,8 @@ export function buildStockAgg(
         kabupaten: row.kota ?? "Tidak diketahui",
         stokAdmin: 0,
         stokFisik: 0,
+        stokFisikTransit: 0,
+        transitTransfer: 0,
         kapasitas: 0,
         gudang: new Map(),
       };
@@ -179,16 +203,22 @@ export function buildStockAgg(
         plant: row.kode_plants ?? "",
         stokAdmin: 0,
         stokFisik: 0,
+        stokFisikTransit: 0,
+        transitTransfer: 0,
         kapasitas: capacityForPlants(row.kode_plants, kapasitas),
       };
       agg.gudang.set(row.gudang_id, gudang);
       agg.kapasitas += gudang.kapasitas;
     }
 
-    gudang.stokAdmin += admin;
-    gudang.stokFisik += fisik;
-    agg.stokAdmin += admin;
-    agg.stokFisik += fisik;
+    gudang.stokAdmin += hitungStok ? admin : 0;
+    gudang.stokFisik += hitungStok ? fisik : 0;
+    gudang.stokFisikTransit += hitungStok ? fisik + transit : 0;
+    gudang.transitTransfer += hitungStok ? transit : 0;
+    agg.stokAdmin += hitungStok ? admin : 0;
+    agg.stokFisik += hitungStok ? fisik : 0;
+    agg.stokFisikTransit += hitungStok ? fisik + transit : 0;
+    agg.transitTransfer += hitungStok ? transit : 0;
   });
 
   return map;
@@ -215,6 +245,8 @@ export function buildViews(stockAgg: Map<string, KabAgg>): Map<string, KabView> 
       kabupaten: agg.kabupaten,
       stokAdmin: agg.stokAdmin,
       stokFisik: agg.stokFisik,
+      stokFisikTransit: agg.stokFisikTransit,
+      transitTransfer: agg.transitTransfer,
       kapasitas: agg.kapasitas,
       ratio,
       status: statusFor(agg.stokAdmin, agg.kapasitas),

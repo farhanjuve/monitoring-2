@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Crosshair, Download, Minus, Plus, Search, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, Crosshair, Download, Globe2, Minus, Plus, Search, X } from "lucide-react";
 import { KabupatenMap } from "@/components/peta/KabupatenMap";
 import {
   type GeoCollection,
@@ -28,7 +28,11 @@ import kapasitasData from "@/lib/kapasitas-gudang.json";
 import { API_BASE_URL } from "@/lib/api";
 import "./peta.css";
 
-const KAPASITAS = kapasitasData as KapasitasMap;
+/**
+ * Cadangan bila API kapasitas gagal dimuat. Sumber utama tetap database,
+ * karena kapasitas sekarang bisa diubah lewat halaman Data Gudang.
+ */
+const KAPASITAS_CADANGAN = kapasitasData as KapasitasMap;
 
 const HOME_CENTER: [number, number] = [118, -2.4];
 const HOME_ZOOM = 1;
@@ -84,6 +88,9 @@ export default function PetaKabupatenPage() {
   const [geo, setGeo] = useState<GeoCollection | null>(null);
   const [stockRows, setStockRows] = useState<StockRow[]>([]);
   const [summary, setSummary] = useState<CoverageSummary | null>(null);
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [kapasitas, setKapasitas] = useState<KapasitasMap>(KAPASITAS_CADANGAN);
+  const [selectedDate, setSelectedDate] = useState("");
   const [basis, setBasis] = useState<StockBasis>("admin");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [center, setCenter] = useState<[number, number]>(HOME_CENTER);
@@ -94,38 +101,99 @@ export default function PetaKabupatenPage() {
   const [loading, setLoading] = useState(true);
   const searchRef = useRef<HTMLDivElement | null>(null);
 
-  const tanggal = useMemo(() => {
-    const dates = stockRows.map((row) => row.tanggal);
-    return dates.filter(Boolean).sort().pop() ?? "";
-  }, [stockRows]);
+  const tanggal = selectedDate;
 
+  // Batas kabupaten cukup dimuat sekali.
   useEffect(() => {
+    let active = true;
+
+    fetch("/indonesia-kabupaten.geojson")
+      .then((res) => {
+        if (!res.ok) throw new Error("Gagal memuat batas kabupaten.");
+        return res.json() as Promise<GeoCollection>;
+      })
+      .then((geoJson) => {
+        if (active) setGeo(geoJson);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(
+          err instanceof Error ? err.message : "Gagal memuat batas kabupaten.",
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Daftar tanggal yang punya hasil kalkulasi stok.
+  useEffect(() => {
+    let active = true;
+
+    fetch(`${API_BASE_URL}/api/stocks/dates`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((dates) => {
+        if (!active) return;
+        const list = Array.isArray(dates) ? (dates as string[]) : [];
+        setAvailableDates(list);
+        const fromUrl =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("tanggal") ?? ""
+            : "";
+        setSelectedDate((current) => {
+          if (current && list.includes(current)) return current;
+          if (fromUrl && list.includes(fromUrl)) return fromUrl;
+          return list[0] ?? "";
+        });
+        if (list.length === 0) setLoading(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAvailableDates([]);
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Muat ulang stok + coverage setiap tanggal berubah.
+  useEffect(() => {
+    if (!selectedDate) return;
     let active = true;
 
     const load = async () => {
       setLoading(true);
       setError(null);
       try {
-        const [geoRes, stockRes, summaryRes] = await Promise.all([
-          fetch("/indonesia-kabupaten.geojson"),
-          fetch(`${API_BASE_URL}/api/stocks/`),
-          fetch(`${API_BASE_URL}/api/stocks/coverage`).catch(() => null),
+        const [stockRes, summaryRes] = await Promise.all([
+          fetch(
+            `${API_BASE_URL}/api/stocks/?tanggal=${encodeURIComponent(selectedDate)}`,
+          ),
+          fetch(
+            `${API_BASE_URL}/api/stocks/coverage?tanggal=${encodeURIComponent(selectedDate)}`,
+          ).catch(() => null),
         ]);
-        if (!geoRes.ok) throw new Error("Gagal memuat batas kabupaten.");
         if (!stockRes.ok) throw new Error("Gagal memuat data stok.");
 
-        const geoJson = (await geoRes.json()) as GeoCollection;
         const stocks = await stockRes.json();
         const coverageJson =
-          summaryRes && summaryRes.ok ? ((await summaryRes.json()) as CoverageSummary) : null;
+          summaryRes && summaryRes.ok
+            ? ((await summaryRes.json()) as CoverageSummary)
+            : null;
 
         if (!active) return;
-        setGeo(geoJson);
         setStockRows(Array.isArray(stocks) ? (stocks as StockRow[]) : []);
         setSummary(coverageJson);
+        setSelectedKey(null);
+        setPanelOpen(false);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : "Gagal memuat data.");
+        setStockRows([]);
+        setSummary(null);
       } finally {
         if (active) setLoading(false);
       }
@@ -135,7 +203,43 @@ export default function PetaKabupatenPage() {
     return () => {
       active = false;
     };
+  }, [selectedDate]);
+
+  // Kapasitas diambil dari database supaya perubahan di halaman Data Gudang
+  // langsung terlihat. JSON bawaan hanya dipakai bila API gagal dimuat.
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE_URL}/api/master-data/kapasitas`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("gagal"))))
+      .then((items: Array<{ kode_plant: string; kapasitas_ton: number }>) => {
+        if (!active || !Array.isArray(items) || items.length === 0) return;
+        const peta: KapasitasMap = {};
+        items.forEach((item) => {
+          peta[item.kode_plant] = item.kapasitas_ton;
+        });
+        setKapasitas(peta);
+      })
+      .catch(() => {
+        /* biarkan cadangan JSON tetap terpakai */
+      });
+    return () => {
+      active = false;
+    };
   }, []);
+
+  const handleDateChange = (value: string) => {
+    setSelectedDate(value);
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (value) params.set("tanggal", value);
+    else params.delete("tanggal");
+    const nextQuery = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      nextQuery ? `?${nextQuery}` : window.location.pathname,
+    );
+  };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -158,7 +262,7 @@ export default function PetaKabupatenPage() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const stockAgg = useMemo(() => buildStockAgg(stockRows, KAPASITAS), [stockRows]);
+  const stockAgg = useMemo(() => buildStockAgg(stockRows, kapasitas), [stockRows, kapasitas]);
   const views = useMemo(() => buildViews(stockAgg), [stockAgg]);
 
   const coverage = useMemo(() => {
@@ -245,7 +349,7 @@ export default function PetaKabupatenPage() {
   const basisStok = selected
     ? basis === "admin"
       ? selected.stokAdmin
-      : selected.stokFisik
+      : selected.stokFisikTransit
     : 0;
   const basisRatio =
     selected && selected.kapasitas > 0 ? basisStok / selected.kapasitas : null;
@@ -254,7 +358,7 @@ export default function PetaKabupatenPage() {
   const gudangList = useMemo(() => {
     if (!selected) return [] as GudangView[];
     const value = (gudang: GudangView) =>
-      basis === "admin" ? gudang.stokAdmin : gudang.stokFisik;
+      basis === "admin" ? gudang.stokAdmin : gudang.stokFisikTransit;
     return [...selected.gudang].sort((a, b) => {
       const ua = a.kapasitas > 0 ? value(a) / a.kapasitas : -1;
       const ub = b.kapasitas > 0 ? value(b) / b.kapasitas : -1;
@@ -331,7 +435,11 @@ export default function PetaKabupatenPage() {
             Kapasitas Gudang per Kabupaten/Kota
           </h1>
           <p className="mt-0.5 truncate text-[11px] text-[var(--peta-mute)]">
-            {tanggal ? `Stok admin ${formatTanggal(tanggal)}` : "Memuat periode…"}
+            {tanggal
+              ? `Stok admin ${formatTanggal(tanggal)}`
+              : loading
+                ? "Memuat periode…"
+                : "Belum ada data"}
             {summary
               ? ` · ${summary.gudang.aktif} gudang · ${summary.gudang.kode_plant} kode plant`
               : coverage.gudang > 0
@@ -341,6 +449,27 @@ export default function PetaKabupatenPage() {
         </div>
 
         <div className="ml-auto flex flex-1 flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
+          <label className="flex items-center gap-1.5 text-[11px] text-[var(--peta-mute)]">
+            <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="sr-only">Tanggal data</span>
+            <select
+              value={selectedDate}
+              onChange={(event) => handleDateChange(event.target.value)}
+              disabled={availableDates.length === 0}
+              aria-label="Pilih tanggal data"
+              className="rounded-md border border-[var(--peta-border-strong)] bg-[var(--peta-surface-2)] px-2 py-1.5 text-[11px] text-[var(--peta-text)] focus:border-[var(--peta-accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {availableDates.length === 0 && (
+                <option value="">Belum ada data</option>
+              )}
+              {availableDates.map((date) => (
+                <option key={date} value={date}>
+                  {formatTanggal(date)}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <div ref={searchRef} className="relative w-full max-w-[220px] sm:w-auto">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--peta-mute)]" />
             <input
@@ -373,6 +502,15 @@ export default function PetaKabupatenPage() {
               </ul>
             )}
           </div>
+
+          <Link
+            href="/lingkup-nasional"
+            title="Atur gudang yang masuk perhitungan nasional"
+            className="peta-focus inline-flex items-center gap-1.5 rounded-md border border-[var(--peta-border-strong)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--peta-dim)] transition-colors hover:bg-white/5 hover:text-[var(--peta-text)]"
+          >
+            <Globe2 className="h-3.5 w-3.5" aria-hidden="true" />
+            Lingkup
+          </Link>
 
           <button
             type="button"
@@ -567,7 +705,9 @@ export default function PetaKabupatenPage() {
             gudang dan tampil abu-abu.{" "}
             {coverage.tanpaKapasitas > 0
               ? `${coverage.tanpaKapasitas} gudang (${formatTon(coverage.stokTanpaKapasitas)} t stok admin) belum punya data kapasitas, jadi tidak ikut dihitung.`
-              : "Semua gudang sudah punya data kapasitas."}
+              : "Semua gudang sudah punya data kapasitas."}{" "}
+            Gudang pabrik/pelabuhan dan gudang yang tidak dicentang di Lingkup
+            Nasional tidak dihitung.
           </p>
         </aside>
 
@@ -710,7 +850,7 @@ export default function PetaKabupatenPage() {
                     <dl className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
                       <div>
                         <dt className="text-[10px] text-[var(--peta-mute)]">
-                          {basis === "admin" ? "Stok admin" : "Stok fisik"}
+                          {basis === "admin" ? "Stok admin" : "Stok fisik + transit"}
                         </dt>
                         <dd className="mt-0.5 font-display text-sm text-[var(--peta-text)] tabular-nums">
                           {formatTon(basisStok)}
@@ -740,6 +880,18 @@ export default function PetaKabupatenPage() {
                       />
                     </div>
 
+                    {selected.transitTransfer > 0 && (
+                      <p className="mt-2 text-[10px] leading-relaxed text-[var(--peta-mute)]">
+                        Sekitar{" "}
+                        <b className="tabular-nums text-[var(--peta-dim)]">
+                          {formatTon(selected.transitTransfer)} ton
+                        </b>{" "}
+                        berstatus <b className="text-[var(--peta-dim)]">transit transfer</b> —
+                        barang sedang menuju gudang ini. Angka ini sudah termasuk pada basis
+                        stok fisik.
+                      </p>
+                    )}
+
                     {selected.kapasitas > 0 ? (
                       <p className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--peta-mute)]">
                         <span>
@@ -767,7 +919,7 @@ export default function PetaKabupatenPage() {
                       </div>
                       <ul className="peta-scroll mt-2 max-h-[34dvh] space-y-0.5 overflow-y-auto pr-1 sm:max-h-[calc(100dvh-27rem)]">
                         {gudangList.map((gudang) => {
-                          const stok = basis === "admin" ? gudang.stokAdmin : gudang.stokFisik;
+                          const stok = basis === "admin" ? gudang.stokAdmin : gudang.stokFisikTransit;
                           const rasio =
                             gudang.kapasitas > 0 ? stok / gudang.kapasitas : null;
                           const status = statusFor(stok, gudang.kapasitas);
@@ -802,6 +954,14 @@ export default function PetaKabupatenPage() {
                                   )}
                                 </span>
                               </div>
+                              {gudang.transitTransfer > 0 && (
+                                <div className="mt-0.5 text-[10px] leading-relaxed text-[var(--peta-mute)]">
+                                  <span className="tabular-nums">
+                                    ± {formatTon(gudang.transitTransfer)} t
+                                  </span>{" "}
+                                  transit transfer — barang menuju gudang ini
+                                </div>
+                              )}
                             </li>
                           );
                         })}

@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
+import { todayJakarta } from "@/lib/time";
 
 interface WarehouseOption {
   id: number;
@@ -42,7 +43,7 @@ interface GeneratedSlide {
 }
 
 export function SlideGeneratorForm() {
-  const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
+  const [tanggal, setTanggal] = useState(todayJakarta);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showAll, setShowAll] = useState(false);

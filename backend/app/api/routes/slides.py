@@ -13,7 +13,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.models.models import (
@@ -46,36 +46,37 @@ def get_gudang_options(
     """Daftar gudang aktif + info apakah punya data stok di tanggal tertentu."""
     warehouses = (
         db.query(Warehouse)
+        .options(selectinload(Warehouse.plants))
         .filter(Warehouse.is_active == True)
         .order_by(Warehouse.nama_gudang)
         .all()
     )
 
+    gudang_ids = [w.id for w in warehouses]
+    stok_ids: set[int] = set()
+    foto_ids: set[int] = set()
+    if tanggal and gudang_ids:
+        stok_ids = {
+            gudang_id
+            for (gudang_id,) in db.query(StockCalculation.gudang_id)
+            .filter(
+                StockCalculation.tanggal == tanggal,
+                StockCalculation.gudang_id.in_(gudang_ids),
+            )
+            .distinct()
+        }
+        foto_ids = {
+            gudang_id
+            for (gudang_id,) in db.query(Photo.gudang_id)
+            .filter(
+                Photo.tanggal == tanggal,
+                Photo.gudang_id.in_(gudang_ids),
+            )
+            .distinct()
+        }
+
     results = []
     for w in warehouses:
-        has_stok = False
-        has_photo = False
-
-        if tanggal:
-            has_stok = (
-                db.query(StockCalculation.id)
-                .filter(
-                    StockCalculation.gudang_id == w.id,
-                    StockCalculation.tanggal == tanggal,
-                )
-                .first()
-                is not None
-            )
-            has_photo = (
-                db.query(Photo.id)
-                .filter(
-                    Photo.gudang_id == w.id,
-                    Photo.tanggal == tanggal,
-                )
-                .first()
-                is not None
-            )
-
         kode_plants = [p.kode_plant for p in (w.plants or [])]
 
         results.append({
@@ -84,8 +85,8 @@ def get_gudang_options(
             "kota": w.kota,
             "provinsi": w.provinsi,
             "kode_plants": kode_plants,
-            "has_stok": has_stok,
-            "has_photo": has_photo,
+            "has_stok": w.id in stok_ids,
+            "has_photo": w.id in foto_ids,
         })
 
     return results

@@ -18,6 +18,7 @@ from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.uploads import read_upload
 from app.models.models import IndigoReport, IndigoDO
 from app.services.indigo_parser import (
     parse_sap_report,
@@ -65,8 +66,10 @@ async def upload_report(
         pass
 
     try:
-        sap_data = await sap_file.read()
-        indigo_data = await indigo_file.read()
+        sap_data = await read_upload(sap_file)
+        indigo_data = await read_upload(indigo_file)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Gagal membaca file: {str(e)}")
 

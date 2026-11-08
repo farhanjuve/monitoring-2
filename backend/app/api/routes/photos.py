@@ -10,7 +10,7 @@ from typing import List
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.core.time import to_utc_iso, utc_now
+from app.core.time import jakarta_today, to_utc_iso, utc_now
 from app.models.models import Photo, Warehouse, WarehousePlant
 
 router = APIRouter()
@@ -169,13 +169,19 @@ def get_photos(gudang_id: int, tanggal: str | None = None, db: Session = Depends
 @router.get("/gallery")
 def get_gallery(tanggal: str | None = None, db: Session = Depends(get_db)):
     """Ambil galeri grouped per gudang, default untuk tanggal hari ini."""
-    selected_date = tanggal or utc_now().date().isoformat()
+    selected_date = tanggal or jakarta_today().isoformat()
     photos = db.query(Photo).filter(Photo.tanggal == selected_date).order_by(Photo.gudang_id.asc(), Photo.feed_number.asc(), Photo.uploaded_at.desc()).all()
+
+    gudang_ids = {p.gudang_id for p in photos}
+    gudang_map = {
+        g.id: g
+        for g in db.query(Warehouse).filter(Warehouse.id.in_(list(gudang_ids))).all()
+    } if gudang_ids else {}
 
     grouped: dict[int, dict] = {}
     for p in photos:
         if p.gudang_id not in grouped:
-            gudang = db.query(Warehouse).filter(Warehouse.id == p.gudang_id).first()
+            gudang = gudang_map.get(p.gudang_id)
             if not gudang:
                 continue
             grouped[p.gudang_id] = {

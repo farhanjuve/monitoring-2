@@ -12,6 +12,8 @@ interface StockSummaryCardsProps {
   data: StockCalc[];
   loading?: boolean;
   factory?: FactorySummary | null;
+  /** Satuan angka ringkasan: ton untuk pupuk padat, liter untuk pupuk cair. */
+  satuan?: "Ton" | "L";
 }
 
 export interface FactorySummary {
@@ -20,7 +22,12 @@ export interface FactorySummary {
   plant: number;
 }
 
-export function StockSummaryCards({ data, loading = false, factory = null }: StockSummaryCardsProps) {
+export function StockSummaryCards({
+  data,
+  loading = false,
+  factory = null,
+  satuan = "Ton",
+}: StockSummaryCardsProps) {
   const totals = data.reduce(
     (acc, row) => ({
       stok_fisik: acc.stok_fisik + row.stok_fisik,
@@ -57,7 +64,7 @@ export function StockSummaryCards({ data, loading = false, factory = null }: Sto
         <h2 id="ringkasan-stok" className="text-sm font-semibold text-slate-800">
           Ringkasan Stok
         </h2>
-        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Ton</span>
+        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{satuan}</span>
       </div>
 
       <dl className="divide-y divide-slate-100">

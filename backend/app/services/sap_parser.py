@@ -8,36 +8,71 @@ Parser disesuaikan dengan format file nyata yang diterima dari SAP:
 import pandas as pd
 from io import BytesIO
 from datetime import date
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+
+from app.core.material_master import (
+    FALLBACK_KEYWORDS,
+    grup_material,
+    klasifikasi_deskripsi,
+    material_info,
+    normalize_material_code,
+    periksa_satuan,
+)
 
 
 # ============================================================
-# Mapping jenis pupuk berdasarkan deskripsi material
+# Mapping jenis pupuk
 # ============================================================
-PUPUK_KEYWORDS = {
-    "Urea": ["urea"],
-    "NPK": ["npk", "phonska", "15-15-15", "15-10-12", "16-16-16"],
-    "ZA": ["za ", " za", "ammonium sulfate", "amonium", "zwavelzure"],
-    "SP-36": ["sp-36", "sp36", "sp 36", "superphosphat"],
-    "Organik": ["organik", "organic", "pupuk hayati"],
+# Acuan utama adalah kode material (lihat app/core/material_master.py).
+# Tabel kata kunci di bawah hanya cadangan untuk kode yang belum terdaftar.
+PUPUK_KEYWORDS = FALLBACK_KEYWORDS
+
+# Satuan yang dikenal. Satuan lain dilaporkan sebagai peringatan, bukan diam-diam dianggap ton.
+SATUAN_DIKENAL = {"TON", "L", "KG"}
+
+# Singkatan satuan dari SAP (mis. ZSD memakai "TO").
+SATUAN_ALIAS = {
+    "TO": "TON",
+    "TON": "TON",
+    "L": "L",
+    "LTR": "L",
+    "LT": "L",
+    "KG": "KG",
+    "KGM": "KG",
 }
 
-MB52_REQUIRED_COLUMNS = {"Plant", "Material Description", "Unrestricted"}
+
+def _normalisasi_satuan(raw) -> str:
+    """Satuan SAP -> bentuk baku (TO -> TON, LTR -> L). Kosong bila tidak ada."""
+    if raw is None:
+        return ""
+    nilai = str(raw).strip().upper()
+    if not nilai or nilai == "NAN":
+        return ""
+    return SATUAN_ALIAS.get(nilai, nilai)
+
+
+def _ke_ton(nilai: float, satuan: str) -> float:
+    """Satuan file -> ton. Hanya KG yang perlu dikonversi (1 KG = 0,001 t)."""
+    return nilai / 1000.0 if satuan == "KG" else nilai
+
+MB52_REQUIRED_COLUMNS = {"Plant", "Material", "Material Description", "Unrestricted"}
 MB52_EXPECTED_MIN_COLUMNS = 5
 ZSD_REQUIRED_COLUMNS = {"Plant SO", "Deskripsi Material", "Outstanding SO"}
 ZSD_EXPECTED_MIN_COLUMNS = 5
 
 
 def classify_pupuk(material_desc: str) -> str:
-    """Klasifikasikan jenis pupuk dari deskripsi material (case-insensitive)."""
-    if not material_desc or str(material_desc).strip().lower() in ("nan", ""):
-        return "Lainnya"
-    desc_lower = str(material_desc).lower()
-    for jenis, keywords in PUPUK_KEYWORDS.items():
-        for kw in keywords:
-            if kw.lower() in desc_lower:
-                return jenis
-    return "Lainnya"
+    """Klasifikasikan jenis pupuk dari deskripsi material (cadangan saja)."""
+    return klasifikasi_deskripsi(material_desc)
+
+
+def klasifikasi_material(material_code, material_desc: str) -> str:
+    """Klasifikasi jenis pupuk: kode material lebih dulu, deskripsi sebagai cadangan."""
+    info = material_info(material_code)
+    if info:
+        return info["kategori"]
+    return klasifikasi_deskripsi(material_desc)
 
 
 def _read_excel_and_normalize(file_bytes: bytes) -> pd.DataFrame:
@@ -102,23 +137,36 @@ def preview_zsd_sodo(file_bytes: bytes, tanggal: date) -> Dict[str, Any]:
 # ============================================================
 # MB52 Parser
 # ============================================================
-def parse_mb52(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
+def parse_mb52(
+    file_bytes: bytes,
+    tanggal: date,
+    warning_sink: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     """
     Parse file MB52 dari SAP.
 
     Kolom yang digunakan (sesuai format file nyata):
       - Plant                  → kode_plant (contoh: 'B006')
-      - Material               → material_code
-      - Material Description   → material_desc, digunakan untuk klasifikasi jenis pupuk
+      - Material               → material_code (acuan klasifikasi jenis pupuk)
+      - Material Description   → material_desc, cadangan bila kode belum terdaftar
       - Storage Location       → storage_location
       - Unrestricted           → stok fisik (unrestricted)
       - Stock in Transit       → intransit (opsional)
-      - Base Unit of Measure   → satuan (opsional, untuk validasi)
+      - Base Unit of Measure   → satuan; dibandingkan dengan master material
+
+    `warning_sink` (opsional) akan diisi pesan bila satuan di file berbeda dari
+    master atau tidak dikenal. Upload tetap berjalan; pengguna diberi tahu.
     """
     df = _read_excel_and_normalize(file_bytes)
     actual_cols = df.columns.tolist()
 
     _validate_columns(actual_cols, MB52_REQUIRED_COLUMNS, MB52_EXPECTED_MIN_COLUMNS, "MB52")
+
+    peringatan: List[str] = []
+    satuan_tak_dikenal = set()
+    diabaikan = {}
+    diabaikan_satuan = 0
+    dikonversi_kg = 0
 
     results = []
     for _, row in df.iterrows():
@@ -126,9 +174,28 @@ def parse_mb52(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
         if not plant_val or plant_val.lower() == "nan":
             continue
 
-        material_code = str(row.get("Material", "")).strip()
+        material_code = normalize_material_code(row.get("Material", ""))
         material_desc = str(row.get("Material Description", "")).strip()
         sloc = str(row.get("Storage Location", "")).strip()
+        satuan = _normalisasi_satuan(row.get("Base Unit of Measure"))
+
+        if satuan and satuan not in SATUAN_DIKENAL:
+            # Satuan listrik (KWH), volume (M3/NM3), atau satuan lain tidak
+            # boleh dicampur ke stok berton.
+            satuan_tak_dikenal.add(satuan)
+            diabaikan_satuan += 1
+            continue
+
+        jenis_pupuk = grup_material(material_code, material_desc)
+        if jenis_pupuk is None:
+            kunci = material_desc or material_code or "(tanpa nama)"
+            diabaikan[kunci] = diabaikan.get(kunci, 0) + 1
+            continue
+
+        if satuan:
+            pesan = periksa_satuan(material_code, satuan)
+            if pesan and pesan not in peringatan:
+                peringatan.append(pesan)
 
         # Unrestricted stock
         unrestricted_raw = row.get("Unrestricted", 0)
@@ -144,7 +211,22 @@ def parse_mb52(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
         except (ValueError, TypeError):
             intransit = 0.0
 
-        jenis_pupuk = classify_pupuk(material_desc)
+        # Transit and Transfer (opsional) - dipakai peta keterisian gudang
+        transit_transfer_raw = row.get("Transit and Transfer", 0)
+        try:
+            transit_transfer = (
+                float(transit_transfer_raw) if pd.notna(transit_transfer_raw) else 0.0
+            )
+        except (ValueError, TypeError):
+            transit_transfer = 0.0
+
+        # Satuan file menentukan konversi. KG wajib dibagi 1.000 agar tidak
+        # tercatat sebagai ton (1.000 KG tidak boleh menjadi 1.000 ton).
+        if satuan == "KG":
+            dikonversi_kg += 1
+        unrestricted = _ke_ton(unrestricted, satuan)
+        intransit = _ke_ton(intransit, satuan)
+        transit_transfer = _ke_ton(transit_transfer, satuan)
 
         results.append({
             "tanggal": tanggal,
@@ -155,7 +237,29 @@ def parse_mb52(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
             "storage_location": sloc if sloc.lower() != "nan" else None,
             "unrestricted": unrestricted,
             "intransit": intransit,
+            "transit_transfer": transit_transfer,
         })
+
+    if diabaikan:
+        total = sum(diabaikan.values())
+        contoh = ", ".join(
+            str(nama)
+            for nama, _ in sorted(diabaikan.items(), key=lambda item: -item[1])[:3]
+        )
+        peringatan.append(
+            f"{total} baris diabaikan karena bukan material pupuk (mis. {contoh})."
+        )
+    if diabaikan_satuan:
+        peringatan.append(
+            f"{diabaikan_satuan} baris diabaikan karena satuannya tidak bisa dihitung "
+            f"sebagai ton ({', '.join(sorted(satuan_tak_dikenal))})."
+        )
+    if dikonversi_kg:
+        peringatan.append(
+            f"{dikonversi_kg} baris bersatuan KG dikonversi ke ton (dibagi 1.000)."
+        )
+    if warning_sink is not None:
+        warning_sink.extend(peringatan)
 
     return results
 
@@ -163,13 +267,18 @@ def parse_mb52(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
 # ============================================================
 # ZSD_SODO Parser
 # ============================================================
-def parse_zsd_sodo(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
+def parse_zsd_sodo(
+    file_bytes: bytes,
+    tanggal: date,
+    warning_sink: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     """
     Parse file ZSD_SODO (SO Outstanding) dari SAP.
 
     Kolom yang digunakan (sesuai format file nyata):
       - Plant SO               → kode_plant (sama dengan kolom Plant di MB52, contoh: 'F203')
-      - Deskripsi Material     → digunakan untuk klasifikasi jenis pupuk
+      - Nomor Material         → acuan klasifikasi jenis pupuk (bila tersedia)
+      - Deskripsi Material     → cadangan klasifikasi
       - Nomor Sales Order      → nomor_so
       - Outstanding SO         → outstanding_qty (qty yang belum terpenuhi)
       - Status SO              → status_so
@@ -180,15 +289,32 @@ def parse_zsd_sodo(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
 
     _validate_columns(actual_cols, ZSD_REQUIRED_COLUMNS, ZSD_EXPECTED_MIN_COLUMNS, "ZSD_SODO")
 
+    peringatan: List[str] = []
+    diabaikan = {}
+    dikonversi_kg = 0
+
     results = []
     for _, row in df.iterrows():
         kode_gudang = str(row.get("Plant SO", "")).strip()
         if not kode_gudang or kode_gudang.lower() == "nan":
             continue
 
+        material_code = normalize_material_code(row.get("Nomor Material", ""))
         material_desc = str(row.get("Deskripsi Material", "")).strip()
         nomor_so = str(row.get("Nomor Sales Order", "")).strip()
         status_so = str(row.get("Status SO", "")).strip()
+
+        jenis_pupuk = grup_material(material_code, material_desc)
+        if jenis_pupuk is None:
+            kunci = material_desc or material_code or "(tanpa nama)"
+            diabaikan[kunci] = diabaikan.get(kunci, 0) + 1
+            continue
+
+        satuan = _normalisasi_satuan(row.get("Unit of Measure"))
+        if material_code and material_code.lower() != "nan":
+            pesan = periksa_satuan(material_code, satuan)
+            if pesan and pesan not in peringatan:
+                peringatan.append(pesan)
 
         # Outstanding SO qty
         outstanding_raw = row.get("Outstanding SO", 0)
@@ -204,7 +330,10 @@ def parse_zsd_sodo(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
         except (ValueError, TypeError):
             qty_so = 0.0
 
-        jenis_pupuk = classify_pupuk(material_desc)
+        if satuan == "KG":
+            dikonversi_kg += 1
+        outstanding_qty = _ke_ton(outstanding_qty, satuan)
+        qty_so = _ke_ton(qty_so, satuan)
 
         results.append({
             "tanggal": tanggal,
@@ -214,5 +343,21 @@ def parse_zsd_sodo(file_bytes: bytes, tanggal: date) -> List[Dict[str, Any]]:
             "outstanding_qty": outstanding_qty,
             "status_so": status_so if status_so.lower() != "nan" else None,
         })
+
+    if diabaikan:
+        total = sum(diabaikan.values())
+        contoh = ", ".join(
+            str(nama)
+            for nama, _ in sorted(diabaikan.items(), key=lambda item: -item[1])[:3]
+        )
+        peringatan.append(
+            f"{total} baris SO diabaikan karena bukan material pupuk (mis. {contoh})."
+        )
+    if dikonversi_kg:
+        peringatan.append(
+            f"{dikonversi_kg} baris SO bersatuan KG dikonversi ke ton (dibagi 1.000)."
+        )
+    if warning_sink is not None:
+        warning_sink.extend(peringatan)
 
     return results

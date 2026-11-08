@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr, field_serializer
+from pydantic import BaseModel, EmailStr, Field, field_serializer, field_validator
 from datetime import datetime, date
-from typing import Optional
+from typing import List, Optional
 
 from app.core.time import to_utc_iso
 
@@ -44,13 +44,22 @@ class StockCalculationOut(BaseModel):
     kota: Optional[str] = None
     provinsi: Optional[str] = None
     is_active: bool = True
+    is_national_included: bool = True
     tipe_pupuk: str
     stok_fisik: float
     outstanding_so: float
     stok_admin_tanpa_intransit: float
     intransit: float
     stok_admin: float
+    # "Transit and Transfer" dari MB52. Hanya dipakai peta keterisian gudang.
+    transit_transfer: float = 0.0
     calculated_at: Optional[datetime] = None
+
+    @field_validator("transit_transfer", mode="before")
+    @classmethod
+    def _transit_transfer_nol(cls, value):
+        """Baris lama bisa saja NULL; perlakukan sebagai 0, bukan error."""
+        return 0.0 if value is None else value
 
     @field_serializer("calculated_at")
     def serialize_calculated_at(self, value: datetime | None):
@@ -88,3 +97,29 @@ class UploadResponse(BaseModel):
     upload: SAPUploadOut
     rows_processed: int
     calculations_updated: int
+
+
+# ==================== Kapasitas Gudang ====================
+
+class KapasitasItem(BaseModel):
+    """Satu kode plant beserta kapasitas dan gudang pemiliknya."""
+
+    kode_plant: str
+    kapasitas_ton: float = 0.0
+    nama_gudang: Optional[str] = None
+    kota: Optional[str] = None
+    provinsi: Optional[str] = None
+    terpetakan: bool = False
+    total_kapasitas_gudang: float = 0.0
+
+
+class KapasitasUpdate(BaseModel):
+    kapasitas_ton: float = Field(default=0.0, ge=0)
+
+
+class KapasitasBulkItem(KapasitasUpdate):
+    kode_plant: str
+
+
+class KapasitasBulkUpdate(BaseModel):
+    items: List[KapasitasBulkItem]

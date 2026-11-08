@@ -14,8 +14,14 @@ import {
 } from "@/components/dashboard/UploadCompletenessBanner";
 import { API_BASE_URL } from "@/lib/api";
 import { normalizeProvince } from "@/lib/province";
+import {
+  OPSI_FILTER,
+  OPSI_SUBSIDI,
+  cocokFilter,
+  satuanUntukFilter,
+} from "@/lib/pupuk";
 
-const PUPUK_OPTIONS = ["Semua", "Urea", "NPK", "ZA", "SP-36", "Organik"];
+const PUPUK_OPTIONS = OPSI_FILTER;
 
 const fieldLabel = "block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1";
 const fieldControl =
@@ -26,7 +32,7 @@ export default function Home() {
   const pathname = usePathname();
   const [latestDateStr, setLatestDateStr] = useState<string | null>(null);
   const [tanggal, setTanggal] = useState("");
-  const [tipePupuk, setTipePupuk] = useState("Semua");
+  const [tipePupuk, setTipePupuk] = useState(OPSI_SUBSIDI);
   const [searchGudang, setSearchGudang] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("");
   const [mapTipePupuk, setMapTipePupuk] = useState("Semua");
@@ -42,7 +48,7 @@ export default function Home() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     setTanggal(params.get("tanggal") || "");
-    setTipePupuk(params.get("tipe_pupuk") || "Semua");
+    setTipePupuk(params.get("tipe_pupuk") || OPSI_SUBSIDI);
     setSearchGudang(params.get("q") || "");
     setProvinceFilter(params.get("provinsi") || "");
   }, []);
@@ -194,7 +200,7 @@ export default function Home() {
   const mapData = useMemo(() => {
     const needle = searchGudang.trim().toLowerCase();
     return rawData.filter((row) => {
-      if (tipePupuk !== "Semua" && row.tipe_pupuk !== tipePupuk) return false;
+      if (!cocokFilter(tipePupuk, row.tipe_pupuk)) return false;
       if (!needle) return true;
       const haystack = `${row.nama_gudang || ""} ${row.kode_plants || ""} ${row.kota || ""} ${row.provinsi || ""}`.toLowerCase();
       return haystack.includes(needle);
@@ -334,11 +340,21 @@ export default function Home() {
           tipePupuk={mapTipePupuk}
           onTipePupukChange={setMapTipePupuk}
         />
-        <StockSummaryCards data={filteredData} loading={loading} factory={factorySummary} />
+        <StockSummaryCards
+          data={filteredData}
+          loading={loading}
+          factory={factorySummary}
+          satuan={satuanUntukFilter(tipePupuk)}
+        />
       </div>
 
       <div className="mt-6">
-        <StockTable data={filteredData} loading={loading} tipePupuk={tipePupuk} />
+        <StockTable
+          data={filteredData}
+          loading={loading}
+          tipePupuk={tipePupuk}
+          satuan={satuanUntukFilter(tipePupuk)}
+        />
       </div>
     </div>
   );

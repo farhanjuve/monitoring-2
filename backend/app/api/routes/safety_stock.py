@@ -13,6 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.uploads import read_upload
 from app.models.models import SafetyStock
 from app.services.safety_stock_service import import_safety_stock, parse_safety_stock_excel
 
@@ -59,7 +60,7 @@ async def upload_safety_stock(
         raise HTTPException(status_code=400, detail="Format file harus .xlsx / .xls.")
 
     try:
-        content = await file.read()
+        content = await read_upload(file)
         records = parse_safety_stock_excel(content)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

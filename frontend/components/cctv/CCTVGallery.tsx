@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Maximize2, X } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
+import { todayJakarta } from "@/lib/time";
 
 type GalleryItem = {
   gudang_id: number;
@@ -13,7 +14,7 @@ type GalleryItem = {
 
 export function CCTVGallery() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
+  const [tanggal, setTanggal] = useState(todayJakarta);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

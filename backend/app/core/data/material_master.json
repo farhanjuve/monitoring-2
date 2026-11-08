@@ -1,0 +1,888 @@
+{
+  "sumber": "materialcode2.csv",
+  "jumlah": 147,
+  "materials": {
+    "1000030": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea PRL NS CRH"
+    },
+    "1000031": {
+      "kategori": "Urea",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "UREA SUB CRH"
+    },
+    "1000032": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea PRL NS @5 KG"
+    },
+    "1000034": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea PRL NS @25 KG Nitrea"
+    },
+    "1000036": {
+      "kategori": "Urea",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea SUB @50 KG"
+    },
+    "1000037": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea PRL NS @50 KG"
+    },
+    "1000051": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "UREA GRN NS CRH"
+    },
+    "1000052": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea GRN NS @5 KG"
+    },
+    "1000054": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "UREA GRN NS @50 KG"
+    },
+    "1000056": {
+      "kategori": "ZA",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "AMMONIUM SULPHATE:ZA CRH;21%MIN"
+    },
+    "1000057": {
+      "kategori": "ZA",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZA SUB @50 KG"
+    },
+    "1000058": {
+      "kategori": "ZA",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZA NS @50 KG"
+    },
+    "1000059": {
+      "kategori": "ZK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZK NS @50 KG"
+    },
+    "1000073": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-12-17 +2Mg BLD NS @50KG"
+    },
+    "1000074": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-12-17 +2Mg FUS NS @50KG"
+    },
+    "1000076": {
+      "kategori": "Organik",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "FERTILIZER:PUPUK ORGANIK;GRANUL;40KG"
+    },
+    "1000077": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea PRL NS JUMBO DIC GRAPHICS"
+    },
+    "1000078": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea PRL NS JUMBO DONGJIN"
+    },
+    "1000083": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-6-22 +3Mg FUS NS @50KG"
+    },
+    "1000087": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-6-27 +4Mg BLD NS @50KG"
+    },
+    "1000092": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27 +Mg+B NS @50KG"
+    },
+    "1000093": {
+      "kategori": "Organik",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Petroganik SUB @40 KG"
+    },
+    "1000095": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-12-17+2Mg CHM NS @50KG"
+    },
+    "1000096": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27-4 FUS NS @50KG"
+    },
+    "1000098": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27-4+0,65B FUS NS @50KG"
+    },
+    "1000103": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-7-25 +1TE+OBH BLD NS @50KG"
+    },
+    "1000141": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-15 FUS NS @50KG"
+    },
+    "1000142": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea PRL NS JUMBO LOC"
+    },
+    "1000143": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-15 BLD NS @50KG"
+    },
+    "1000145": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-15 KEBOMAS CHM NS @50KG"
+    },
+    "1000149": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-6 +4Mg BLD NS @50KG"
+    },
+    "1000150": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-6 +4Mg FUS NS @50KG"
+    },
+    "1000175": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16 BLD NS @50KG"
+    },
+    "1000197": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK JERANTI NS @5KG"
+    },
+    "1000200": {
+      "kategori": "SP-36",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "SP 36 NS @50KG"
+    },
+    "1000203": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 19-0-32 +3,5S BLD NS @50KG"
+    },
+    "1000205": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 20-0-30 BLD NS @50KG"
+    },
+    "1000210": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 20-10-10 FUS SUB @50KG"
+    },
+    "1000211": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 20-10-10 BLD NS @50KG"
+    },
+    "1000236": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea PRL NS @50 KG Nitrea"
+    },
+    "1000243": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea GRN NS @10 KG"
+    },
+    "1000266": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea PRL NS JUMBO DOVER"
+    },
+    "1000283": {
+      "kategori": "SP-36",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "FERTILIZER:SP-36;GRANUL;50KG"
+    },
+    "1000355": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27 +4MgO  BLD NS @50KG"
+    },
+    "1000360": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-4-25 BLD NS @50KG"
+    },
+    "1000376": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-7-23 FUS NS @50KG"
+    },
+    "1000382": {
+      "kategori": "ZK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZK NS @1 TON"
+    },
+    "1000383": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK PHONSKA PLUS @25KG"
+    },
+    "1000385": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK PHONSKA PLUS @5KG"
+    },
+    "1000447": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 25-7-7 BLD NS @50KG"
+    },
+    "1000449": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK @25KG 30-6-8 BLD NS"
+    },
+    "1000472": {
+      "kategori": "NPK",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-10-12 CHM CRH"
+    },
+    "1000492": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK FUS UNSPEC"
+    },
+    "1000498": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-6-27 +2Mg BLD NS @50KG"
+    },
+    "1000499": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 27-6-10 +2Mg BLD NS @50KG"
+    },
+    "1000501": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-10-20 +3Mg BLD NS @50KG"
+    },
+    "1000651": {
+      "kategori": "ZK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZK NS @25 KG"
+    },
+    "1000857": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "N:46%;Urea PRL NS @50 KG-EKSTERNAL"
+    },
+    "1000859": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-12-18+1TE+HA+Bio BLD NS @50KG"
+    },
+    "1000860": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 24-12-12+1TE+HA+Bio BLD NS @50KG"
+    },
+    "1000883": {
+      "kategori": "Organik",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Pupuk Organik Excow @40Kg"
+    },
+    "1000898": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 20-10-10 BLD NS @20KG"
+    },
+    "1000940": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea PRL NS @20 KG"
+    },
+    "1000971": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "UREA PRILL NON SUBSIDI @1KG"
+    },
+    "1000972": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "UREA PRILL NON SUBSIDI @5KG"
+    },
+    "1000975": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-15 FUSION NON SUBSIDI @1KG"
+    },
+    "1000998": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-15 FUSION NON SUBSIDI @25KG"
+    },
+    "1001002": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27-4+0,6B FUSION NS @50KG"
+    },
+    "1001023": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "UREA PRILL NON SUBSIDI @25KG"
+    },
+    "1001039": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 30-6-8 BLD NS @20KG"
+    },
+    "1001184": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-15 NON SUBSIDI @50KG"
+    },
+    "1001217": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea GRN NS @20 KG"
+    },
+    "1001220": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK JERANTI NS @1KG"
+    },
+    "1001221": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Nitrea NS @1 KG"
+    },
+    "1001222": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16 BLD NS @20KG"
+    },
+    "1001298": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-12-17 +2Mg BLD NS @20KG"
+    },
+    "1001305": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 8-15-19 +2Mg BLD NS @20KG"
+    },
+    "1001318": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK PHONSKA PLUS @25KG - EKSTERNAL"
+    },
+    "1001326": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16 NITRAT FUS NS @20KG"
+    },
+    "1001340": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16 BLD NS @5KG"
+    },
+    "1001346": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-10-12 NS @50KG"
+    },
+    "1001416": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-15 BLD NS @50KG-EKSTERNAL"
+    },
+    "1001537": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16 NITRAT FUS NS @25KG"
+    },
+    "1001548": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 20-10-10 BLD NS @5KG"
+    },
+    "1001559": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 20-10-18 BLD NS @50KG"
+    },
+    "1001582": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27-4+0,6B FUSION NS @5KG"
+    },
+    "1001590": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27-4+0,6B FUSION NS @1KG"
+    },
+    "1001591": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16 BLD NS @2KG SBY"
+    },
+    "1001592": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16 BLD NS @5KG SBY"
+    },
+    "1001605": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16 BLD NS @20KG SBY"
+    },
+    "1001606": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 20-10-10 BLD NS @20KG SBY"
+    },
+    "1001634": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27-4+0,65B FUSION NS @50KG"
+    },
+    "1001671": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Nitralite NS @25KG"
+    },
+    "1001696": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-11-20 PETRONINGRAT FUS NS @20KG"
+    },
+    "1001722": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-12-17-2 BLD NS @5KG SBY"
+    },
+    "1001751": {
+      "kategori": "NPK Kakao",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 14-12-16-4Mgo BLD Kakao SUB @50KG"
+    },
+    "1001758": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 20-10-10 BLD NS @50KG SBY"
+    },
+    "1001805": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "UREA PRL NS @5KG"
+    },
+    "1001810": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-12-17-2 BLD NS @20KG SBY"
+    },
+    "1001818": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16 BLD NS @50KG SBY"
+    },
+    "1001820": {
+      "kategori": "Organik Cair",
+      "status": "NON SUBSIDI",
+      "satuan": "L",
+      "deskripsi": "LIQUID ORGANIK FERTILIZER;PHONSKA OCA"
+    },
+    "1001828": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK PIM 15-15-15 CHM NS @25KG"
+    },
+    "1001838": {
+      "kategori": "NPK",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-10-12 SUB @50KG"
+    },
+    "1001865": {
+      "kategori": "Organik Cair",
+      "status": "SUBSIDI",
+      "satuan": "L",
+      "deskripsi": "LIQUID ORG FERTILIZER;PHONSKA OCA;SUB;1L"
+    },
+    "1001877": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 17-6-25+HA FUSION NS @50KG"
+    },
+    "1001879": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 18-8-18+HA FUSION NS @50KG"
+    },
+    "1001894": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 21-9-15+4S+0,5Zn BLD NS @50Kg"
+    },
+    "1001917": {
+      "kategori": "NPK",
+      "status": "SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-10-12 BLD SUB @50KG"
+    },
+    "1001937": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPS PETRO NIPHOS CHM NS @25KG"
+    },
+    "1001938": {
+      "kategori": "ZK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZK NS @1KG"
+    },
+    "1001946": {
+      "kategori": "SP-26",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "SP 26 NS @25KG"
+    },
+    "1001953": {
+      "kategori": "SP-26",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "SP 26 NS @50KG"
+    },
+    "1001982": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16+Mikroba BLD NS @50KG"
+    },
+    "1002071": {
+      "kategori": "Phosgreen",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "PHOSGREEN NS @50KG"
+    },
+    "1002072": {
+      "kategori": "ZA",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZA PLUS;50KG"
+    },
+    "1002121": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27-4+1TE FUS NS @50KG"
+    },
+    "1002125": {
+      "kategori": "Organik Cair",
+      "status": "NON SUBSIDI",
+      "satuan": "L",
+      "deskripsi": "PHONSKA OCA PLUS;NS;1L;POC"
+    },
+    "1002601": {
+      "kategori": "Organik",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "PETROGANIK PREMIUM;NS;GRANUL;40KG"
+    },
+    "1002603": {
+      "kategori": "Phosgreen",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "PHOSGREEN NS @25KG"
+    },
+    "1002690": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 30-6-8 BLD NS @20KG SBY"
+    },
+    "1002698": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-15 BLD NS @50KG SBY"
+    },
+    "1002713": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NITREA  PRL NS @5KG"
+    },
+    "1002718": {
+      "kategori": "ZA",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZA PLUS;25KG"
+    },
+    "1002731": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NITREA PRL NS @50KG"
+    },
+    "1003052": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-15 CHM NS@ 25 KG"
+    },
+    "1003054": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 16-16-16 CHM NS@ 25 KG"
+    },
+    "1003075": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-8-10 FUS NS @50KG"
+    },
+    "1003076": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-8-10 FUS NS @25KG"
+    },
+    "1003082": {
+      "kategori": "ZA",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZA PLUS @1KG"
+    },
+    "1003100": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 12-12-17-2 FUS NS @20KG"
+    },
+    "1003106": {
+      "kategori": "Organik",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "PETROGANIK PREMIUM @1KG"
+    },
+    "1003117": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "PHONSKA ALAM @1KG"
+    },
+    "1003120": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK PHONSKA PLUS @1KG"
+    },
+    "1003146": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "PETRO NITRAT 16-16-16 @1KG"
+    },
+    "1003153": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "UREA NS JUMBO @1000Kg"
+    },
+    "1003210": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "UREA PRL NS @1 KG"
+    },
+    "1003222": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-15-15 BLD NS @20KG SBY"
+    },
+    "1003291": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPS PETRO NIPHOS @1KG"
+    },
+    "1003371": {
+      "kategori": "ZA",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZA NS @5 KG"
+    },
+    "1003463": {
+      "kategori": "Urea",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "Urea GRN NS + Mikroba @20KG"
+    },
+    "1003481": {
+      "kategori": "ZK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZK NS @2KG"
+    },
+    "1003494": {
+      "kategori": "SP-26",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "SP 26 NS @1KG"
+    },
+    "1003495": {
+      "kategori": "ZA",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "ZA NS @1 KG"
+    },
+    "1003496": {
+      "kategori": "Phosgreen",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "PHOSGREEN NS @1KG"
+    },
+    "1003609": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 15-13-18 FUS NS @20KG"
+    },
+    "1003642": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27-4 FUS NS @50KG NRV"
+    },
+    "1003647": {
+      "kategori": "NPK",
+      "status": "NON SUBSIDI",
+      "satuan": "TON",
+      "deskripsi": "NPK 13-6-27-4+0,65B FUS NS @50KG NRV"
+    }
+  }
+}

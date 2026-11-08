@@ -12,3 +12,13 @@ export function formatJakartaDateTime(value: string | null | undefined) {
     timeZone: JAKARTA_TIME_ZONE,
   });
 }
+
+/** Tanggal hari ini (YYYY-MM-DD) menurut zona waktu Jakarta, bukan UTC. */
+export function todayJakarta(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: JAKARTA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}

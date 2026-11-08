@@ -32,14 +32,27 @@ interface StockTableProps {
   data: StockCalc[];
   loading?: boolean;
   tipePupuk?: string;
+  /** Satuan angka tabel: ton untuk pupuk padat, liter untuk pupuk cair. */
+  satuan?: "Ton" | "L";
 }
 
 const PUPUK_DOT: Record<string, string> = {
   Urea: "bg-blue-500",
   NPK: "bg-emerald-500",
+  "NPK Kakao": "bg-teal-500",
+  ZA: "bg-amber-500",
+  "SP-36": "bg-orange-500",
+  Organik: "bg-lime-600",
+  "Organik Cair": "bg-cyan-500",
+  "Non Subsidi": "bg-slate-400",
 };
 
-export function StockTable({ data, loading = false, tipePupuk = "Semua" }: StockTableProps) {
+export function StockTable({
+  data,
+  loading = false,
+  tipePupuk = "Semua",
+  satuan = "Ton",
+}: StockTableProps) {
   const [expandedProv, setExpandedProv] = useState<Record<string, boolean>>({});
   const [expandedKota, setExpandedKota] = useState<Record<string, boolean>>({});
 
@@ -162,11 +175,11 @@ export function StockTable({ data, loading = false, tipePupuk = "Semua" }: Stock
                                         <thead className="border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
                                           <tr>
                                             <th className="px-4 py-2 font-semibold">Jenis</th>
-                                            <th className="px-4 py-2 text-right font-semibold">Fisik (Ton)</th>
-                                            <th className="px-4 py-2 text-right font-semibold">Out. SO (Ton)</th>
+                                            <th className="px-4 py-2 text-right font-semibold">Fisik ({satuan})</th>
+                                            <th className="px-4 py-2 text-right font-semibold">Out. SO ({satuan})</th>
                                             <th className="px-4 py-2 text-right font-semibold">Admin (tanpa intransit)</th>
-                                            <th className="px-4 py-2 text-right font-semibold">Intransit (Ton)</th>
-                                            <th className="px-4 py-2 text-right font-semibold text-pupuk-darkBlue">Admin (Ton)</th>
+                                            <th className="px-4 py-2 text-right font-semibold">Intransit ({satuan})</th>
+                                            <th className="px-4 py-2 text-right font-semibold text-pupuk-darkBlue">Admin ({satuan})</th>
                                           </tr>
                                         </thead>
                                         <tbody>

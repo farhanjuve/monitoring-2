@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Upload, History, Truck, Presentation, Warehouse, Radar, Map as MapIcon, X } from "lucide-react";
+import { LayoutDashboard, Upload, History, Truck, Presentation, Warehouse, Radar, Map as MapIcon, MapPin, Globe2, X } from "lucide-react";
 
 interface SidebarProps {
   open: boolean;
@@ -16,8 +16,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     { name: "Intransit", icon: Truck, href: "/intransit" },
     { name: "Upload Data SAP", icon: Upload, href: "/upload" },
     { name: "Data Gudang", icon: Warehouse, href: "/data-gudang" },
+    { name: "Peta Kapasitas", icon: MapIcon, href: "/peta-kabupaten" },
+    { name: "Lingkup Nasional", icon: Globe2, href: "/lingkup-nasional" },
     { name: "INDIGO Tracker", icon: Radar, href: "/indigo" },
-    { name: "Peta Manual", icon: MapIcon, href: "/peta-38" },
+    { name: "Peta Manual", icon: MapPin, href: "/peta-38" },
     { name: "Log Aktivitas", icon: History, href: "/logs" },
     { name: "Generator Slide", icon: Presentation, href: "/slides" },
   ];

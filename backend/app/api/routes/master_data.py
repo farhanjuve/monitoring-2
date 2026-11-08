@@ -1,25 +1,40 @@
 import csv
 import io
+from datetime import date
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
+from app.core.audit import catat_audit
 from app.core.database import get_db
+from app.core.kapasitas import load_kapasitas
+from app.core.national_scope import (
+    default_included,
+    exclusion_reasons,
+    kategori_tampilan,
+)
 from app.core.plant_directory import (
     is_official_warehouse,
     plant_category,
 )
+from app.core.uploads import read_upload
 from app.models.models import (
     AreaGrouping,
     Photo,
+    PlantCapacity,
     SAPOutstandingDO,
     SAPStock,
     StockCalculation,
     Warehouse,
     WarehousePlant,
+)
+from app.schemas.schemas import (
+    KapasitasBulkUpdate,
+    KapasitasItem,
+    KapasitasUpdate,
 )
 from app.services.stock_calculator import recalculate_all_for_date, recalculate_warehouse_range
 
@@ -193,7 +208,7 @@ async def upload_master_gudang(
         raise HTTPException(status_code=400, detail="File harus berformat .csv")
 
     try:
-        content = await file.read()
+        content = await read_upload(file)
         text = content.decode("utf-8-sig")
         records = _parse_master_csv(text)
     except UnicodeDecodeError as exc:
@@ -363,6 +378,7 @@ def get_gudang(gudang_id: int, db: Session = Depends(get_db)):
         "provinsi": gudang.provinsi,
         "kode_kab": gudang.kode_kab,
         "is_active": gudang.is_active,
+        "is_national_included": bool(gudang.is_national_included),
         "kode_plants": kode_plants,
     }
 
@@ -387,6 +403,10 @@ class WarehouseUpdate(BaseModel):
 
 class PlantUpdate(BaseModel):
     kode_plants: List[str]
+
+
+class NationalInclusionUpdate(BaseModel):
+    included_ids: List[int] = []
 
 
 class RecalculateRangeRequest(BaseModel):
@@ -422,6 +442,131 @@ def get_reference(db: Session = Depends(get_db)):
         }
         for p, items in sorted(provinsi_map.items())
     ]
+
+
+@router.get("/national-inclusion")
+def get_national_inclusion(
+    tanggal: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """Data untuk halaman Lingkup Nasional: gudang aktif + stok + kapasitas.
+
+    `is_national_included` disimpan per gudang. Nilai rekomendasi awal
+    (`alasan_eksklusi`) hanya ditampilkan sebagai saran, bukan dipaksakan.
+    """
+    if not tanggal:
+        tanggal = db.query(func.max(StockCalculation.tanggal)).scalar()
+
+    warehouses = (
+        db.query(Warehouse)
+        .filter(Warehouse.is_active == True)
+        .options(selectinload(Warehouse.plants))
+        .order_by(Warehouse.provinsi, Warehouse.nama_gudang)
+        .all()
+    )
+
+    kapasitas_map = load_kapasitas(db)
+    stock_map: Dict[int, Tuple[float, float]] = {}
+    if tanggal:
+        stock_rows = (
+            db.query(
+                StockCalculation.gudang_id,
+                func.coalesce(func.sum(StockCalculation.stok_admin), 0.0),
+                func.coalesce(func.sum(StockCalculation.stok_fisik), 0.0),
+            )
+            .filter(StockCalculation.tanggal == tanggal)
+            .group_by(StockCalculation.gudang_id)
+            .all()
+        )
+        stock_map = {
+            gudang_id: (float(admin or 0.0), float(fisik or 0.0))
+            for gudang_id, admin, fisik in stock_rows
+        }
+
+    items = []
+    for warehouse in warehouses:
+        kode_plants = sorted(
+            [p.kode_plant for p in (warehouse.plants or []) if p.kode_plant]
+        )
+        kapasitas = sum(kapasitas_map.get(kode, 0.0) for kode in kode_plants)
+        stok_admin, stok_fisik = stock_map.get(warehouse.id, (0.0, 0.0))
+        alasan = exclusion_reasons(kode_plants)
+        items.append(
+            {
+                "id": warehouse.id,
+                "nama_gudang": warehouse.nama_gudang,
+                "kota": warehouse.kota,
+                "provinsi": warehouse.provinsi,
+                "kode_plants": kode_plants,
+                "kategori": kategori_tampilan(kode_plants),
+                "alasan_eksklusi": alasan,
+                "rekomendasi_masuk": not alasan,
+                "is_national_included": bool(warehouse.is_national_included),
+                "kapasitas": float(kapasitas),
+                "stok_admin": stok_admin,
+                "stok_fisik": stok_fisik,
+            }
+        )
+
+    dihitung = [item for item in items if item["is_national_included"]]
+    kapasitas_dihitung = sum(item["kapasitas"] for item in dihitung)
+    # Rasio hanya memakai stok gudang yang punya kapasitas, supaya gudang
+    # tanpa kapasitas tidak menggelembungkan keterisian.
+    admin_terhitung = sum(
+        item["stok_admin"] for item in dihitung if item["kapasitas"] > 0
+    )
+    summary = {
+        "gudang_aktif": len(items),
+        "gudang_dihitung": len(dihitung),
+        "gudang_dikecualikan": len(items) - len(dihitung),
+        "kapasitas": kapasitas_dihitung,
+        "stok_admin": sum(item["stok_admin"] for item in dihitung),
+        "stok_admin_terhitung": admin_terhitung,
+        "stok_fisik": sum(item["stok_fisik"] for item in dihitung),
+        "ratio": (admin_terhitung / kapasitas_dihitung)
+        if kapasitas_dihitung > 0
+        else None,
+    }
+
+    return {
+        "tanggal": tanggal.isoformat() if tanggal else None,
+        "items": items,
+        "summary": summary,
+    }
+
+
+@router.put("/national-inclusion")
+def update_national_inclusion(
+    req: NationalInclusionUpdate,
+    db: Session = Depends(get_db),
+):
+    """Simpan pilihan gudang yang masuk perhitungan nasional (bulk, idempoten)."""
+    active_ids = {
+        row[0]
+        for row in db.query(Warehouse.id).filter(Warehouse.is_active == True).all()
+    }
+    requested = {int(warehouse_id) for warehouse_id in req.included_ids}
+    invalid = sorted(requested - active_ids)
+    if invalid:
+        raise HTTPException(
+            400,
+            "ID gudang tidak aktif atau tidak ditemukan: "
+            + ", ".join(str(item) for item in invalid[:10]),
+        )
+
+    db.query(Warehouse).filter(Warehouse.is_active == True).update(
+        {Warehouse.is_national_included: False}, synchronize_session=False
+    )
+    if requested:
+        db.query(Warehouse).filter(Warehouse.id.in_(requested)).update(
+            {Warehouse.is_national_included: True}, synchronize_session=False
+        )
+
+    db.commit()
+    return {
+        "included": len(requested),
+        "excluded": len(active_ids - requested),
+    }
 
 
 @router.get("/warehouses")
@@ -462,6 +607,7 @@ def list_warehouses(
             "kode_kab": w.kode_kab,
             "provinsi": w.provinsi,
             "is_active": w.is_active,
+            "is_national_included": bool(w.is_national_included),
             "kode_plants": [p.kode_plant for p in (w.plants or [])],
             "created_at": w.created_at.isoformat() if w.created_at else None,
         })
@@ -508,6 +654,7 @@ def create_warehouse(req: WarehouseCreate, db: Session = Depends(get_db)):
         kode_kab=kode_kab,
         provinsi=req.provinsi.strip(),
         is_active=True,
+        is_national_included=default_included(plants),
     )
     db.add(warehouse)
     db.flush()
@@ -525,6 +672,7 @@ def create_warehouse(req: WarehouseCreate, db: Session = Depends(get_db)):
         "kode_kab": warehouse.kode_kab,
         "provinsi": warehouse.provinsi,
         "is_active": warehouse.is_active,
+        "is_national_included": bool(warehouse.is_national_included),
         "kode_plants": plants,
     }
 
@@ -712,4 +860,171 @@ def get_unmapped_plants(db: Session = Depends(get_db)):
         "excluded_plants": excluded,
         "excluded_detail": excluded_detail,
         "as_of": latest_date.isoformat() if latest_date else None,
+    }
+
+
+# ==================== Kapasitas Gudang per Kode Plant ====================
+
+def _peta_plant_ke_gudang(db: Session) -> Dict[str, Dict[str, Any]]:
+    """kode_plant -> info gudang pemiliknya (untuk ditampilkan di UI)."""
+    rows = (
+        db.query(
+            WarehousePlant.kode_plant,
+            Warehouse.id,
+            Warehouse.nama_gudang,
+            Warehouse.kota,
+            Warehouse.provinsi,
+        )
+        .join(Warehouse, Warehouse.id == WarehousePlant.gudang_id)
+        .all()
+    )
+    return {
+        str(kode).strip(): {
+            "gudang_id": gid,
+            "nama_gudang": nama,
+            "kota": kota,
+            "provinsi": provinsi,
+        }
+        for kode, gid, nama, kota, provinsi in rows
+    }
+
+
+def _susun_item_kapasitas(
+    peta: Dict[str, float],
+    info_gudang: Dict[str, Dict[str, Any]],
+    total_per_gudang: Dict[int, float],
+    kode: str,
+) -> KapasitasItem:
+    info = info_gudang.get(kode)
+    return KapasitasItem(
+        kode_plant=kode,
+        kapasitas_ton=float(peta.get(kode, 0.0) or 0.0),
+        nama_gudang=info["nama_gudang"] if info else None,
+        kota=info["kota"] if info else None,
+        provinsi=info["provinsi"] if info else None,
+        terpetakan=info is not None,
+        total_kapasitas_gudang=(
+            float(total_per_gudang.get(info["gudang_id"], 0.0)) if info else 0.0
+        ),
+    )
+
+
+def _total_per_gudang(
+    peta: Dict[str, float], info_gudang: Dict[str, Dict[str, Any]]
+) -> Dict[int, float]:
+    hasil: Dict[int, float] = {}
+    for kode, info in info_gudang.items():
+        hasil[info["gudang_id"]] = hasil.get(info["gudang_id"], 0.0) + float(
+            peta.get(kode, 0.0) or 0.0
+        )
+    return hasil
+
+
+@router.get("/kapasitas", response_model=List[KapasitasItem])
+def list_kapasitas(
+    q: Optional[str] = None,
+    hanya_kosong: bool = False,
+    db: Session = Depends(get_db),
+):
+    """Daftar kapasitas per kode plant, termasuk yang belum terpetakan ke gudang."""
+    peta = load_kapasitas(db)
+    info_gudang = _peta_plant_ke_gudang(db)
+    total_per_gudang = _total_per_gudang(peta, info_gudang)
+
+    items = [
+        _susun_item_kapasitas(peta, info_gudang, total_per_gudang, kode)
+        for kode in sorted(set(peta) | set(info_gudang))
+    ]
+
+    if hanya_kosong:
+        items = [item for item in items if item.kapasitas_ton <= 0]
+
+    if q:
+        jarum = q.strip().lower()
+        items = [
+            item
+            for item in items
+            if jarum in item.kode_plant.lower()
+            or jarum in (item.nama_gudang or "").lower()
+            or jarum in (item.kota or "").lower()
+            or jarum in (item.provinsi or "").lower()
+        ]
+
+    return items
+
+
+@router.put("/kapasitas/{kode_plant}", response_model=KapasitasItem)
+def update_kapasitas(
+    kode_plant: str,
+    req: KapasitasUpdate,
+    db: Session = Depends(get_db),
+):
+    """Ubah kapasitas satu kode plant. Akses bebas, perubahan dicatat di audit log."""
+    kode = (kode_plant or "").strip()
+    if not kode:
+        raise HTTPException(status_code=400, detail="Kode plant tidak boleh kosong.")
+
+    record = db.get(PlantCapacity, kode)
+    lama = float(record.kapasitas_ton or 0.0) if record else 0.0
+    if record:
+        record.kapasitas_ton = req.kapasitas_ton
+    else:
+        record = PlantCapacity(kode_plant=kode, kapasitas_ton=req.kapasitas_ton)
+        db.add(record)
+
+    catat_audit(
+        db,
+        aksi="ubah_kapasitas",
+        entitas="plant_capacity",
+        entitas_id=kode,
+        detail={"lama": lama, "baru": req.kapasitas_ton},
+    )
+    db.commit()
+
+    peta = load_kapasitas(db)
+    info_gudang = _peta_plant_ke_gudang(db)
+    return _susun_item_kapasitas(
+        peta, info_gudang, _total_per_gudang(peta, info_gudang), kode
+    )
+
+
+@router.put("/kapasitas")
+def update_kapasitas_bulk(
+    req: KapasitasBulkUpdate,
+    db: Session = Depends(get_db),
+):
+    """Ubah banyak kapasitas sekaligus (tombol simpan massal di UI)."""
+    perubahan: List[Dict[str, Any]] = []
+    for item in req.items:
+        kode = (item.kode_plant or "").strip()
+        if not kode:
+            continue
+        record = db.get(PlantCapacity, kode)
+        lama = float(record.kapasitas_ton or 0.0) if record else 0.0
+        if abs(lama - item.kapasitas_ton) < 0.0001:
+            continue
+        if record:
+            record.kapasitas_ton = item.kapasitas_ton
+        else:
+            record = PlantCapacity(kode_plant=kode, kapasitas_ton=item.kapasitas_ton)
+            db.add(record)
+        perubahan.append({"kode_plant": kode, "lama": lama, "baru": item.kapasitas_ton})
+
+    if perubahan:
+        catat_audit(
+            db,
+            aksi="ubah_kapasitas_massal",
+            entitas="plant_capacity",
+            entitas_id=None,
+            detail={
+                "jumlah": len(perubahan),
+                "perubahan": perubahan[:200],
+            },
+        )
+    db.commit()
+
+    peta = load_kapasitas(db)
+    return {
+        "diperbarui": len(perubahan),
+        "total_kapasitas": round(sum(peta.values()), 2),
     }

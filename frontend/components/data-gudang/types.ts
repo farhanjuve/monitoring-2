@@ -5,6 +5,7 @@ export interface Warehouse {
   kode_kab: number;
   provinsi: string;
   is_active: boolean;
+  is_national_included?: boolean;
   kode_plants: string[];
   created_at: string | null;
 }

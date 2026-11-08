@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, type Dispatch, type SetStateAction } from "react";
 import { UploadCloud, FileSpreadsheet, CheckCircle, XCircle, Loader2, CalendarDays } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
+import { todayJakarta } from "@/lib/time";
 
 interface UploadResult {
   message: string;
@@ -119,7 +120,7 @@ function createUploadProgressController(setProgress: SetProgress) {
 }
 
 export function UploadSAPForm() {
-  const [tanggal, setTanggal] = useState(() => new Date().toISOString().split("T")[0]);
+  const [tanggal, setTanggal] = useState(todayJakarta);
   
   // MB52 state
   const [mb52File, setMb52File] = useState<File | null>(null);

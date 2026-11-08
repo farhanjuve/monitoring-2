@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
-import { formatJakartaDateTime } from "@/lib/time";
+import { formatJakartaDateTime, todayJakarta } from "@/lib/time";
 import {
   ArrowLeft,
   CalendarDays,
@@ -85,7 +85,7 @@ export default function GudangDetailPage() {
       .then(([gudangData, latestStockData]) => {
         setGudang(gudangData);
         const latestStockRows = Array.isArray(latestStockData) ? latestStockData : [];
-        const latestDate = (latestStockRows[0]?.tanggal as string | undefined) || new Date().toISOString().split("T")[0];
+        const latestDate = (latestStockRows[0]?.tanggal as string | undefined) || todayJakarta();
         setLatestDateStr(latestDate);
 
         if (typeof window !== "undefined") {

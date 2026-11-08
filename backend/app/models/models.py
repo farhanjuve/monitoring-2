@@ -14,6 +14,10 @@ class Warehouse(Base):
     kode_kab = Column(Integer, index=True)
     provinsi = Column(String(100))
     is_active = Column(Boolean, default=True)
+    # Apakah gudang ikut dihitung pada laporan keterisian nasional. Dipisahkan
+    # dari is_active agar gudang tetap aktif tetapi bisa dikecualikan (mis.
+    # gudang lini pabrik/pelabuhan).
+    is_national_included = Column(Boolean, default=True, nullable=False, server_default="1")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -25,6 +29,41 @@ class WarehousePlant(Base):
     kode_plant = Column(String(10), unique=True, index=True, nullable=False)
     
     warehouse = relationship("Warehouse", backref="plants")
+
+
+class PlantCapacity(Base):
+    """Kapasitas gudang per kode plant (ton).
+
+    Disimpan terpisah dari `warehouse_plants` karena satu kode plant bisa belum
+    terpetakan ke gudang mana pun, namun kapasitasnya tetap harus tersedia saat
+    plant itu dipetakan kemudian.
+    """
+
+    __tablename__ = "plant_capacity"
+
+    kode_plant = Column(String(10), primary_key=True)
+    kapasitas_ton = Column(Float, default=0.0, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AuditLog(Base):
+    """Jejak perubahan data penting (mis. kapasitas gudang).
+
+    Aplikasi belum memakai autentikasi untuk endpoint tulis, jadi `aktor`
+    boleh kosong (anonim).
+    """
+
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    aktor = Column(String(100), nullable=True)
+    aksi = Column(String(50), nullable=False)
+    entitas = Column(String(50), nullable=False)
+    entitas_id = Column(String(50), nullable=True)
+    detail = Column(Text, nullable=True)
 
 class SafetyStock(Base):
     __tablename__ = "safety_stock"
@@ -70,6 +109,9 @@ class SAPStock(Base):
     storage_location = Column(String(10), nullable=True)
     unrestricted = Column(Float, default=0.0)
     intransit = Column(Float, default=0.0)
+    # Kolom "Transit and Transfer" dari MB52. Disimpan terpisah karena hanya
+    # dipakai peta keterisian gudang, bukan metrik intransit di dashboard.
+    transit_transfer = Column(Float, default=0.0)
 
 class SAPOutstandingDO(Base):
     __tablename__ = "sap_outstanding_do"
@@ -109,6 +151,7 @@ class StockCalculation(Base):
     stok_admin_tanpa_intransit = Column(Float, default=0.0)
     intransit = Column(Float, default=0.0)
     stok_admin = Column(Float, default=0.0)
+    transit_transfer = Column(Float, default=0.0)
     calculated_at = Column(DateTime(timezone=True), server_default=func.now())
     
     warehouse = relationship("Warehouse", backref="stock_calculations")
@@ -120,6 +163,11 @@ class StockCalculation(Base):
     @property
     def kota(self):
         return self.warehouse.kota if self.warehouse else None
+
+    @property
+    def is_national_included(self):
+        """Ikut perhitungan nasional? Diambil dari master gudang."""
+        return bool(self.warehouse.is_national_included) if self.warehouse else True
 
     @property
     def provinsi(self):
