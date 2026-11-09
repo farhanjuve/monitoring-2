@@ -277,7 +277,8 @@ def parse_zsd_sodo(
 
     Kolom yang digunakan (sesuai format file nyata):
       - Plant SO               → kode_plant (sama dengan kolom Plant di MB52, contoh: 'F203')
-      - Nomor Material         → acuan klasifikasi jenis pupuk (bila tersedia)
+      - Nomor Material         → acuan klasifikasi jenis pupuk dan disimpan
+                                 sebagai ``material_code`` (bisa NULL pada data lama)
       - Deskripsi Material     → cadangan klasifikasi
       - Nomor Sales Order      → nomor_so
       - Outstanding SO         → outstanding_qty (qty yang belum terpenuhi)
@@ -339,6 +340,7 @@ def parse_zsd_sodo(
             "tanggal": tanggal,
             "kode_plant": kode_gudang,
             "jenis_pupuk": jenis_pupuk,
+            "material_code": material_code or None,
             "nomor_so": nomor_so if nomor_so.lower() != "nan" else None,
             "outstanding_qty": outstanding_qty,
             "status_so": status_so if status_so.lower() != "nan" else None,

@@ -13,7 +13,7 @@ from io import BytesIO
 
 import pandas as pd
 
-from app.services.sap_parser import parse_mb52
+from app.services.sap_parser import parse_mb52, parse_zsd_sodo
 
 
 def buat_mb52(baris) -> bytes:
@@ -103,6 +103,28 @@ class KonversiKilogramTest(unittest.TestCase):
 
     def test_peringatan_konversi_disebut(self):
         self.assertIn("KG dikonversi ke ton", " ".join(self.peringatan))
+
+
+class ZsdMaterialCodeTest(unittest.TestCase):
+    """Nomor material SO harus disimpan agar filter produk/subsidi akurat."""
+
+    def test_material_code_disimpan(self):
+        df = pd.DataFrame([
+            {
+                "Plant SO": "B001",
+                "Nomor Material": "1000031",
+                "Deskripsi Material": "UREA SUB CRH",
+                "Outstanding SO": 12.5,
+                "Status SO": "Open",
+            }
+        ])
+        buf = BytesIO()
+        df.to_excel(buf, index=False)
+        rows = parse_zsd_sodo(buf.getvalue(), date(2026, 11, 6))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["material_code"], "1000031")
+        self.assertEqual(rows[0]["jenis_pupuk"], "Urea")
+        self.assertAlmostEqual(rows[0]["outstanding_qty"], 12.5)
 
 
 class KolomMaterialWajibTest(unittest.TestCase):

@@ -2,40 +2,81 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Crosshair, Download, Globe2, Minus, Plus, Search, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CalendarDays,
+  Crosshair,
+  Download,
+  FileText,
+  Globe2,
+  Info,
+  Minus,
+  Plus,
+  RotateCcw,
+  Search,
+  Settings2,
+  X,
+} from "lucide-react";
 import { KabupatenMap } from "@/components/peta/KabupatenMap";
+import { DashboardConfigPanel } from "@/components/peta/DashboardConfigPanel";
 import {
   type GeoCollection,
   type GeoFeature,
-  type GudangView,
-  type KapasitasMap,
-  type StockBasis,
-  type StockRow,
-  STATUS_DESCRIPTION,
+  type KabupatenStatus,
   STATUS_LABEL,
-  buildStockAgg,
-  buildViews,
   displayKabupaten,
   featureCenter,
   featureKey,
   formatPercent,
   formatTanggal,
   formatTon,
-  statusFor,
+  kabupatenKey,
   titleCaseName,
 } from "@/lib/kabupaten";
-import kapasitasData from "@/lib/kapasitas-gudang.json";
+import {
+  DEFAULT_CONFIG,
+  INDIKATOR_LABEL,
+  applyPreset,
+  configFromSearchParams,
+  configToSearchParams,
+  countActiveFilters,
+  deleteNamedPreset,
+  hasConfigParams,
+  isRatioIndikator,
+  loadLastConfig,
+  loadSavedPresets,
+  normalizeConfig,
+  saveLastConfig,
+  saveNamedPreset,
+  type DashboardConfig,
+  type SavedPreset,
+} from "@/lib/dashboard-config";
+import {
+  type PetaAggregate,
+  type PetaMapView,
+  type PetaNode,
+  type PetaRankingItem,
+  PABRIK_BUCKET_LABEL,
+  PABRIK_BUCKET_ORDER,
+  computeQuantiles,
+  fetchPetaAggregate,
+  fetchPetaScopeOptions,
+  formatIndicatorValue,
+  formatPercentOrNA,
+  formatTonOrNA,
+  geoKeyForNode,
+  nodeMetricValue,
+  nodeRatioValue,
+  normalizeWilayah,
+} from "@/lib/peta-aggregate";
 import { API_BASE_URL } from "@/lib/api";
 import "./peta.css";
 
-/**
- * Cadangan bila API kapasitas gagal dimuat. Sumber utama tetap database,
- * karena kapasitas sekarang bisa diubah lewat halaman Data Gudang.
- */
-const KAPASITAS_CADANGAN = kapasitasData as KapasitasMap;
-
 const HOME_CENTER: [number, number] = [118, -2.4];
 const HOME_ZOOM = 1;
+
+const STATUS_ORDER: KabupatenStatus[] = ["ok", "warn", "low", "full", "na", "none"];
 
 const STATUS_VAR: Record<string, string> = {
   ok: "var(--st-ok)",
@@ -46,62 +87,170 @@ const STATUS_VAR: Record<string, string> = {
   none: "var(--st-none)",
 };
 
-const STATUS_ORDER = ["ok", "warn", "low", "full", "na", "none"] as const;
-
-interface CoverageKomoditas {
-  tipe_pupuk: string;
-  gudang_fisik: number;
-  gudang_intransit: number;
-  pabrik_fisik: number;
-  pabrik_intransit: number;
-  total_fisik: number;
+interface ScopeOptions {
+  provinsi: string[];
+  kabupaten: Array<{ nama: string; provinsi: string }>;
+  produk: string[];
+  anper: string[];
 }
 
-interface CoverageSummary {
-  tanggal: string;
-  gudang: {
-    total: number;
-    aktif: number;
-    dengan_stok: number;
-    kode_plant: number;
-    plant_terpetakan: number;
-    plant_pabrik: number;
-    plant_sap: number;
-  };
-  stok_gudang: { fisik: number; admin: number; intransit: number };
-  pabrik: { fisik: number; intransit: number; plant: number };
-  total_sap: { fisik: number; intransit: number };
-  komoditas: CoverageKomoditas[];
-}
-
-/** Label ambang batas untuk legenda peta. */
-const LEGEND_TEXT: Record<string, string> = {
-  ok: "≤ 70%",
-  warn: "70–90%",
-  low: "90–100%",
-  full: "> 100%",
-  na: "Tanpa kapasitas",
-  none: "Belum ada data",
+const EMPTY_OPTIONS: ScopeOptions = {
+  provinsi: [],
+  kabupaten: [],
+  produk: [],
+  anper: [],
 };
+
+interface LegendItem {
+  status: KabupatenStatus;
+  label: string;
+}
+
+interface MapScale {
+  ratio: boolean;
+  quantiles: [number, number, number] | null;
+  inverted: boolean;
+  legends: LegendItem[];
+}
+
+function bucketTon(
+  value: number,
+  quantiles: [number, number, number] | null,
+  inverted: boolean,
+): KabupatenStatus {
+  if (!quantiles) return "ok";
+  const [q1, q2, q3] = quantiles;
+  if (!inverted) {
+    if (value <= q1) return "ok";
+    if (value <= q2) return "warn";
+    if (value <= q3) return "low";
+    return "full";
+  }
+  if (value <= q1) return "full";
+  if (value <= q2) return "low";
+  if (value <= q3) return "warn";
+  return "ok";
+}
+
+function statusForRatio(
+  ratio: number | null,
+  thresholds: DashboardConfig["thresholds"],
+): KabupatenStatus {
+  if (ratio == null) return "na";
+  const [lega, waspada, kritis] = thresholds;
+  const persen = ratio * 100;
+  if (persen <= lega) return "ok";
+  if (persen <= waspada) return "warn";
+  if (persen <= kritis) return "low";
+  return "full";
+}
+
+function buildMapScale(
+  indikator: DashboardConfig["indikator"],
+  thresholds: DashboardConfig["thresholds"],
+  values: number[],
+): MapScale {
+  if (isRatioIndikator(indikator)) {
+    const [lega, waspada, kritis] = thresholds;
+    return {
+      ratio: true,
+      quantiles: null,
+      inverted: false,
+      legends: [
+        { status: "ok", label: `Lega · ≤ ${lega}%` },
+        { status: "warn", label: `Waspada · ${lega}–${waspada}%` },
+        { status: "low", label: `Kritis · ${waspada}–${kritis}%` },
+        { status: "full", label: `Penuh · > ${kritis}%` },
+      ],
+    };
+  }
+
+  const inverted = indikator === "kapasitas_tersisa";
+  let quantiles = computeQuantiles(values);
+  if (!quantiles && values.length > 0) {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    quantiles = [min + (max - min) / 3, min + (2 * (max - min)) / 3, max];
+  }
+
+  const label = (value: number) => `${formatTonOrNA(value)} t`;
+  if (!quantiles) {
+    return {
+      ratio: false,
+      quantiles: null,
+      inverted,
+      legends: [
+        { status: "ok", label: "Nilai terendah" },
+        { status: "warn", label: "Nilai rendah" },
+        { status: "low", label: "Nilai tinggi" },
+        { status: "full", label: "Nilai tertinggi" },
+      ],
+    };
+  }
+
+  const [q1, q2, q3] = quantiles;
+  return {
+    ratio: false,
+    quantiles,
+    inverted,
+    legends: inverted
+      ? [
+          { status: "ok", label: `> ${label(q3)}` },
+          { status: "warn", label: `${label(q2)}–${label(q3)}` },
+          { status: "low", label: `${label(q1)}–${label(q2)}` },
+          { status: "full", label: `≤ ${label(q1)}` },
+        ]
+      : [
+          { status: "ok", label: `≤ ${label(q1)}` },
+          { status: "warn", label: `${label(q1)}–${label(q2)}` },
+          { status: "low", label: `${label(q2)}–${label(q3)}` },
+          { status: "full", label: `> ${label(q3)}` },
+        ],
+  };
+}
 
 export default function PetaKabupatenPage() {
   const [geo, setGeo] = useState<GeoCollection | null>(null);
-  const [stockRows, setStockRows] = useState<StockRow[]>([]);
-  const [summary, setSummary] = useState<CoverageSummary | null>(null);
+  const [data, setData] = useState<PetaAggregate | null>(null);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [kapasitas, setKapasitas] = useState<KapasitasMap>(KAPASITAS_CADANGAN);
-  const [selectedDate, setSelectedDate] = useState("");
-  const [basis, setBasis] = useState<StockBasis>("admin");
+  const [options, setOptions] = useState<ScopeOptions>(EMPTY_OPTIONS);
+  const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
+  const [config, setConfig] = useState<DashboardConfig>(DEFAULT_CONFIG);
+  const [configReady, setConfigReady] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [center, setCenter] = useState<[number, number]>(HOME_CENTER);
   const [zoom, setZoom] = useState(HOME_ZOOM);
   const [query, setQuery] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [reportMode, setReportMode] = useState(false);
+  const [rankingTab, setRankingTab] = useState<"penuh" | "kosong">("penuh");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
   const searchRef = useRef<HTMLDivElement | null>(null);
 
-  const tanggal = selectedDate;
+  // Konfigurasi awal: URL menang atas localStorage supaya tautan bisa dibagikan.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const dariUrl = hasConfigParams(params) ? configFromSearchParams(params) : null;
+    const tersimpan = loadLastConfig();
+    setConfig(dariUrl ?? tersimpan ?? DEFAULT_CONFIG);
+    setSavedPresets(loadSavedPresets());
+    setConfigReady(true);
+  }, []);
+
+  // Simpan konfigurasi ke URL + localStorage.
+  useEffect(() => {
+    if (!configReady || typeof window === "undefined") return;
+    saveLastConfig(config);
+    const queryString = configToSearchParams(config).toString();
+    const next = queryString
+      ? `${window.location.pathname}?${queryString}`
+      : window.location.pathname;
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== next) window.history.replaceState(null, "", next);
+  }, [config, configReady]);
 
   // Batas kabupaten cukup dimuat sekali.
   useEffect(() => {
@@ -117,9 +266,7 @@ export default function PetaKabupatenPage() {
       })
       .catch((err) => {
         if (!active) return;
-        setError(
-          err instanceof Error ? err.message : "Gagal memuat batas kabupaten.",
-        );
+        setError(err instanceof Error ? err.message : "Gagal memuat batas kabupaten.");
       });
 
     return () => {
@@ -127,7 +274,7 @@ export default function PetaKabupatenPage() {
     };
   }, []);
 
-  // Daftar tanggal yang punya hasil kalkulasi stok.
+  // Daftar tanggal snapshot.
   useEffect(() => {
     let active = true;
 
@@ -137,21 +284,14 @@ export default function PetaKabupatenPage() {
         if (!active) return;
         const list = Array.isArray(dates) ? (dates as string[]) : [];
         setAvailableDates(list);
-        const fromUrl =
-          typeof window !== "undefined"
-            ? new URLSearchParams(window.location.search).get("tanggal") ?? ""
-            : "";
-        setSelectedDate((current) => {
-          if (current && list.includes(current)) return current;
-          if (fromUrl && list.includes(fromUrl)) return fromUrl;
-          return list[0] ?? "";
+        setConfig((current) => {
+          if (!current.tanggal) return current;
+          if (list.length === 0 || list.includes(current.tanggal)) return current;
+          return { ...current, tanggal: list[0] };
         });
-        if (list.length === 0) setLoading(false);
       })
       .catch(() => {
-        if (!active) return;
-        setAvailableDates([]);
-        setLoading(false);
+        if (active) setAvailableDates([]);
       });
 
     return () => {
@@ -159,93 +299,80 @@ export default function PetaKabupatenPage() {
     };
   }, []);
 
-  // Muat ulang stok + coverage setiap tanggal berubah.
+  // Pilihan filter wilayah/produk/Anper. Dimuat sekali per tanggal supaya
+  // pilihan provinsi tidak mengecil setelah provinsi dipilih.
   useEffect(() => {
-    if (!selectedDate) return;
+    if (!configReady) return;
     let active = true;
+    const controller = new AbortController();
 
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [stockRes, summaryRes] = await Promise.all([
-          fetch(
-            `${API_BASE_URL}/api/stocks/?tanggal=${encodeURIComponent(selectedDate)}`,
-          ),
-          fetch(
-            `${API_BASE_URL}/api/stocks/coverage?tanggal=${encodeURIComponent(selectedDate)}`,
-          ).catch(() => null),
-        ]);
-        if (!stockRes.ok) throw new Error("Gagal memuat data stok.");
-
-        const stocks = await stockRes.json();
-        const coverageJson =
-          summaryRes && summaryRes.ok
-            ? ((await summaryRes.json()) as CoverageSummary)
-            : null;
-
+    fetchPetaScopeOptions(config.tanggal, controller.signal)
+      .then((hasil) => {
         if (!active) return;
-        setStockRows(Array.isArray(stocks) ? (stocks as StockRow[]) : []);
-        setSummary(coverageJson);
-        setSelectedKey(null);
-        setPanelOpen(false);
-      } catch (err) {
+        setOptions({
+          provinsi: hasil.provinsi,
+          kabupaten: hasil.kabupaten,
+          produk: hasil.produk,
+          anper: hasil.anper,
+        });
+      })
+      .catch(() => {
+        /* biarkan pilihan lama; endpoint agregat tetap bisa dipakai */
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [config.tanggal, configReady]);
+
+  // Satu panggilan untuk KPI, peta, ranking, dan Stok Pabrik.
+  useEffect(() => {
+    if (!configReady) return;
+    let active = true;
+    const controller = new AbortController();
+
+    setLoading(true);
+    setError(null);
+
+    fetchPetaAggregate(config, controller.signal)
+      .then((hasil) => {
         if (!active) return;
-        setError(err instanceof Error ? err.message : "Gagal memuat data.");
-        setStockRows([]);
-        setSummary(null);
-      } finally {
+        setData(hasil);
+      })
+      .catch((err: unknown) => {
+        if (!active || (err instanceof DOMException && err.name === "AbortError")) return;
+        setError(err instanceof Error ? err.message : "Gagal memuat data peta.");
+        setData(null);
+      })
+      .finally(() => {
         if (active) setLoading(false);
-      }
-    };
-
-    load();
-    return () => {
-      active = false;
-    };
-  }, [selectedDate]);
-
-  // Kapasitas diambil dari database supaya perubahan di halaman Data Gudang
-  // langsung terlihat. JSON bawaan hanya dipakai bila API gagal dimuat.
-  useEffect(() => {
-    let active = true;
-    fetch(`${API_BASE_URL}/api/master-data/kapasitas`)
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("gagal"))))
-      .then((items: Array<{ kode_plant: string; kapasitas_ton: number }>) => {
-        if (!active || !Array.isArray(items) || items.length === 0) return;
-        const peta: KapasitasMap = {};
-        items.forEach((item) => {
-          peta[item.kode_plant] = item.kapasitas_ton;
-        });
-        setKapasitas(peta);
-      })
-      .catch(() => {
-        /* biarkan cadangan JSON tetap terpakai */
       });
+
     return () => {
       active = false;
+      controller.abort();
     };
-  }, []);
+  }, [config, configReady, reloadKey]);
 
-  const handleDateChange = (value: string) => {
-    setSelectedDate(value);
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (value) params.set("tanggal", value);
-    else params.delete("tanggal");
-    const nextQuery = params.toString();
-    window.history.replaceState(
-      null,
-      "",
-      nextQuery ? `?${nextQuery}` : window.location.pathname,
-    );
-  };
+  // Setelah filter berubah, jangan biarkan drawer menampilkan wilayah yang
+  // sudah keluar dari cakupan.
+  useEffect(() => {
+    if (!data) return;
+    setSelectedKey((current) => {
+      if (!current) return current;
+      return data.levels.kabupaten.some((node) => geoKeyForNode(node) === current)
+        ? current
+        : null;
+    });
+  }, [data]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelectedKey(null);
         setPanelOpen(false);
+        setConfigOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -262,109 +389,120 @@ export default function PetaKabupatenPage() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const stockAgg = useMemo(() => buildStockAgg(stockRows, kapasitas), [stockRows, kapasitas]);
-  const views = useMemo(() => buildViews(stockAgg), [stockAgg]);
+  const tanggalAktif = config.tanggal || data?.tanggal || "";
+  const indikator = config.indikator;
+  const indikatorLabel = INDIKATOR_LABEL[indikator];
+  const activeFilterCount = countActiveFilters(config);
+  const warnings = data?.meta.warnings ?? [];
 
-  const coverage = useMemo(() => {
-    const counts = { ok: 0, warn: 0, low: 0, full: 0, na: 0, none: 0 } as Record<
-      string,
-      number
-    >;
-    let stokAdmin = 0;
-    let stokFisik = 0;
-    let kapasitas = 0;
-    let gudang = 0;
-    let tanpaKapasitas = 0;
-    let stokTanpaKapasitas = 0;
+  const nodeByGeo = useMemo(() => {
+    const map = new Map<string, PetaNode>();
+    (data?.levels.kabupaten ?? []).forEach((node) => {
+      const key = geoKeyForNode(node);
+      if (key) map.set(key, node);
+    });
+    return map;
+  }, [data]);
 
-    const features = geo?.features ?? [];
-    features.forEach((feature) => {
-      const view = views.get(featureKey(feature));
-      if (!view) {
-        counts.none += 1;
-        return;
+  const mapValues = useMemo(() => {
+    if (!data || isRatioIndikator(indikator)) return [];
+    return data.levels.kabupaten
+      .filter((node) => node.has_data)
+      .map((node) => nodeMetricValue(node, indikator))
+      .filter((value): value is number => value != null && Number.isFinite(value));
+  }, [data, indikator]);
+
+  const mapScale = useMemo(
+    () => buildMapScale(indikator, config.thresholds, mapValues),
+    [indikator, config.thresholds, mapValues],
+  );
+
+  const geoViews = useMemo(() => {
+    const map = new Map<string, PetaMapView>();
+    (data?.levels.kabupaten ?? []).forEach((node) => {
+      const key = geoKeyForNode(node);
+      if (!key) return;
+      const nilai = nodeMetricValue(node, indikator);
+      let status: KabupatenStatus;
+      let statusLabel: string;
+
+      if (!node.has_data) {
+        status = "none";
+        statusLabel = "Belum ada data";
+      } else if (nilai == null) {
+        status = "na";
+        statusLabel = "Nilai tidak tersedia";
+      } else if (mapScale.ratio) {
+        status = (node.status_indikator ?? node.status) as KabupatenStatus;
+        if (status === "none") status = "na";
+        statusLabel = STATUS_LABEL[status];
+      } else {
+        status = bucketTon(nilai, mapScale.quantiles, mapScale.inverted);
+        statusLabel = mapScale.legends.find((item) => item.status === status)?.label ?? "—";
       }
-      counts[view.status] += 1;
-      stokAdmin += view.stokAdmin;
-      stokFisik += view.stokFisik;
-      kapasitas += view.kapasitas;
-      gudang += view.gudang.length;
-      view.gudang.forEach((item) => {
-        if (item.kapasitas <= 0) {
-          tanpaKapasitas += 1;
-          stokTanpaKapasitas += item.stokAdmin;
-        }
+
+      map.set(key, {
+        key,
+        node,
+        status,
+        statusLabel,
+        metricLabel: indikatorLabel,
+        metricText: formatIndicatorValue(nilai, indikator),
       });
     });
+    return map;
+  }, [data, indikator, indikatorLabel, mapScale]);
 
-    return {
-      counts,
-      stokAdmin,
-      stokFisik,
-      kapasitas,
-      gudang,
-      tanpaKapasitas,
-      stokTanpaKapasitas,
-      sisa: kapasitas - stokAdmin,
-      polygons: features.length,
-      ratio: kapasitas > 0 ? stokAdmin / kapasitas : null,
+  const statusCounts = useMemo(() => {
+    const counts: Record<KabupatenStatus, number> = {
+      ok: 0,
+      warn: 0,
+      low: 0,
+      full: 0,
+      na: 0,
+      none: 0,
     };
-  }, [views, geo]);
+    const features = geo?.features ?? [];
+    features.forEach((feature) => {
+      const view = geoViews.get(featureKey(feature));
+      counts[view?.status ?? "none"] += 1;
+    });
+    return counts;
+  }, [geo, geoViews]);
 
   const geoKeys = useMemo(
     () => new Set((geo?.features ?? []).map((feature) => featureKey(feature))),
     [geo],
   );
 
-  const withData = useMemo(
-    () =>
-      Array.from(views.values()).filter(
-        (view) => geoKeys.has(view.key) && view.kapasitas > 0,
-      ),
-    [views, geoKeys],
-  );
-
-  const fullest = useMemo(
-    () =>
-      [...withData]
-        .sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0))
-        .slice(0, 4),
-    [withData],
-  );
-
-  const emptiest = useMemo(
-    () =>
-      [...withData]
-        .sort((a, b) => b.kapasitas - b.stokAdmin - (a.kapasitas - a.stokAdmin))
-        .slice(0, 4),
-    [withData],
-  );
-
-  const selected = selectedKey ? views.get(selectedKey) ?? null : null;
+  const selectedView = selectedKey ? geoViews.get(selectedKey) ?? null : null;
+  const selectedNode = selectedView?.node ?? null;
   const selectedFeature = useMemo(() => {
     if (!selectedKey || !geo) return null;
     return geo.features.find((feature) => featureKey(feature) === selectedKey) ?? null;
   }, [geo, selectedKey]);
 
-  const basisStok = selected
-    ? basis === "admin"
-      ? selected.stokAdmin
-      : selected.stokFisikTransit
-    : 0;
-  const basisRatio =
-    selected && selected.kapasitas > 0 ? basisStok / selected.kapasitas : null;
-  const basisStatus = selected ? statusFor(basisStok, selected.kapasitas) : "none";
+  const selectedMetric = selectedNode ? nodeMetricValue(selectedNode, indikator) : null;
+  const selectedRatio = selectedNode ? nodeRatioValue(selectedNode, indikator) : null;
 
   const gudangList = useMemo(() => {
-    if (!selected) return [] as GudangView[];
-    const value = (gudang: GudangView) =>
-      basis === "admin" ? gudang.stokAdmin : gudang.stokFisikTransit;
-    return [...selected.gudang].sort((a, b) => {
-      const ua = a.kapasitas > 0 ? value(a) / a.kapasitas : -1;
-      const ub = b.kapasitas > 0 ? value(b) / b.kapasitas : -1;
-      return ub !== ua ? ub - ua : value(b) - value(a);
-    });
-  }, [selected, basis]);
+    if (!selectedNode || !data) return [];
+    const provinsi = normalizeWilayah(selectedNode.provinsi);
+    return data.levels.gudang
+      .filter(
+        (gudang) =>
+          geoKeyForNode(gudang) === selectedKey &&
+          normalizeWilayah(gudang.provinsi) === provinsi,
+      )
+      .sort((a, b) => {
+        const va = nodeMetricValue(a, indikator);
+        const vb = nodeMetricValue(b, indikator);
+        if (va == null && vb == null) return b.stok_fisik - a.stok_fisik;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        return vb - va;
+      });
+  }, [data, selectedNode, selectedKey, indikator]);
 
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -378,22 +516,47 @@ export default function PetaKabupatenPage() {
           key,
           name: feature.properties.WADMKK ?? "Tanpa nama",
           provinsi: feature.properties.WADMPR ?? "",
-          view: views.get(key) ?? null,
+          view: geoViews.get(key) ?? null,
           feature,
         };
       });
-  }, [geo, query, views]);
+  }, [geo, query, geoViews]);
 
-  // Setiap wilayah yang dibuka mulai dari stok admin (dasar warna peta);
-  // pengguna bisa beralih ke fisik di panel detail.
+  const kpi = data?.kpi ?? null;
+  const kpiMetric = kpi ? nodeMetricValue(kpi, indikator) : null;
+  const scopeLabel = kpi
+    ? kpi.nama === "Nasional"
+      ? "Nasional"
+      : config.kabupaten
+        ? displayKabupaten(kpi.nama)
+        : titleCaseName(kpi.nama)
+    : "—";
+
+  const ranking = data?.ranking ?? null;
+  const rankingItems: PetaRankingItem[] =
+    rankingTab === "penuh" ? ranking?.penuh ?? [] : ranking?.kosong ?? [];
+
+  const updateConfig = (next: DashboardConfig) => setConfig(next);
+
+  const patchConfig = (patch: Partial<DashboardConfig>) =>
+    setConfig((current) => applyPreset(current, patch));
+
+  const resetDashboard = () => {
+    setConfig((current) => ({ ...DEFAULT_CONFIG, tanggal: current.tanggal }));
+    setSelectedKey(null);
+    setQuery("");
+    setReportMode(false);
+  };
+
   const handleSelect = (key: string | null) => {
-    if (key) setBasis("admin");
     setSelectedKey(key);
   };
 
-  const focusKabupaten = (key: string, feature: GeoFeature) => {
+  const focusGeoKey = (key: string) => {
+    if (!geoKeys.has(key)) return;
     handleSelect(key);
-    const point = featureCenter(feature);
+    const feature = geo?.features.find((item) => featureKey(item) === key);
+    const point = feature ? featureCenter(feature) : null;
     if (point) {
       setCenter(point);
       setZoom((current) => Math.max(current, 5));
@@ -402,22 +565,100 @@ export default function PetaKabupatenPage() {
     setPanelOpen(false);
   };
 
-  const focusByKey = (key: string) => {
-    const feature = geo?.features.find((item) => featureKey(item) === key);
-    if (feature) focusKabupaten(key, feature);
+  const focusRankingItem = (item: PetaRankingItem) => {
+    const key = kabupatenKey(item.kota ?? item.nama);
+    focusGeoKey(key);
   };
 
-  /** Unduh laporan keterisian gudang (Excel) untuk tanggal data yang sedang tampil. */
   const exportOccupancy = () => {
-    const query = tanggal ? `?tanggal=${encodeURIComponent(tanggal)}` : "";
+    const queryString = tanggalAktif
+      ? `?tanggal=${encodeURIComponent(tanggalAktif)}`
+      : "";
     window.open(
-      `${API_BASE_URL}/api/stocks/export-occupancy-excel${query}`,
+      `${API_BASE_URL}/api/stocks/export-occupancy-excel${queryString}`,
       "_blank",
       "noopener",
     );
   };
 
-  const drawerOpen = Boolean(selected || selectedFeature);
+  const chips = useMemo(() => {
+    const list: Array<{ id: string; label: string; clear: () => void }> = [];
+    config.produk.forEach((produk) => {
+      list.push({
+        id: `produk-${produk}`,
+        label: produk,
+        clear: () =>
+          setConfig((current) => ({
+            ...current,
+            produk: current.produk.filter((item) => item !== produk),
+          })),
+      });
+    });
+    config.anper.forEach((anper) => {
+      list.push({
+        id: `anper-${anper}`,
+        label: `Anper ${anper}`,
+        clear: () =>
+          setConfig((current) => ({
+            ...current,
+            anper: current.anper.filter((item) => item !== anper),
+          })),
+      });
+    });
+    if (config.subsidi !== "SEMUA") {
+      list.push({
+        id: "subsidi",
+        label: config.subsidi === "SUBSIDI" ? "Subsidi" : "Non subsidi",
+        clear: () => setConfig((current) => ({ ...current, subsidi: "SEMUA" })),
+      });
+    }
+    if (config.provinsi) {
+      list.push({
+        id: "provinsi",
+        label: config.provinsi,
+        clear: () =>
+          setConfig((current) => ({ ...current, provinsi: "", kabupaten: "" })),
+      });
+    }
+    if (config.kabupaten) {
+      list.push({
+        id: "kabupaten",
+        label: displayKabupaten(config.kabupaten),
+        clear: () => setConfig((current) => ({ ...current, kabupaten: "" })),
+      });
+    }
+    if (config.indikator !== DEFAULT_CONFIG.indikator) {
+      list.push({
+        id: "indikator",
+        label: `Peta: ${INDIKATOR_LABEL[config.indikator]}`,
+        clear: () =>
+          setConfig((current) => ({
+            ...current,
+            indikator: DEFAULT_CONFIG.indikator,
+          })),
+      });
+    }
+    const [a, b, c] = config.thresholds;
+    if (
+      a !== DEFAULT_CONFIG.thresholds[0] ||
+      b !== DEFAULT_CONFIG.thresholds[1] ||
+      c !== DEFAULT_CONFIG.thresholds[2]
+    ) {
+      list.push({
+        id: "ambang",
+        label: `Ambang ${a}/${b}/${c}%`,
+        clear: () =>
+          setConfig((current) => ({
+            ...current,
+            thresholds: DEFAULT_CONFIG.thresholds,
+          })),
+      });
+    }
+    return list;
+  }, [config]);
+
+  const drawerOpen = Boolean(selectedNode || selectedFeature);
+  const empty = Boolean(data && data.meta.gudang_scope === 0);
 
   return (
     <div className="peta-shell relative flex h-[100dvh] w-full flex-col overflow-hidden">
@@ -432,19 +673,22 @@ export default function PetaKabupatenPage() {
 
         <div className="min-w-0">
           <h1 className="truncate font-display text-[15px] font-semibold tracking-tight text-[var(--peta-text)]">
-            Kapasitas Gudang per Kabupaten/Kota
+            {reportMode ? "Laporan Manajemen Kapasitas Gudang" : "Kapasitas Gudang per Kabupaten/Kota"}
           </h1>
-          <p className="mt-0.5 truncate text-[11px] text-[var(--peta-mute)]">
-            {tanggal
-              ? `Stok admin ${formatTanggal(tanggal)}`
+          <p
+            className="mt-0.5 truncate text-[11px] text-[var(--peta-mute)]"
+            title={
+              data
+                ? `Sumber: ${data.meta.sumber} · ${data.meta.kapasitas_basis}`
+                : undefined
+            }
+          >
+            {tanggalAktif
+              ? `Snapshot ${formatTanggal(tanggalAktif)}`
               : loading
                 ? "Memuat periode…"
                 : "Belum ada data"}
-            {summary
-              ? ` · ${summary.gudang.aktif} gudang · ${summary.gudang.kode_plant} kode plant`
-              : coverage.gudang > 0
-                ? ` · ${coverage.gudang} gudang`
-                : ""}
+            {data ? ` · ${data.meta.gudang_scope} gudang · ${scopeLabel}` : ""}
           </p>
         </div>
 
@@ -453,15 +697,15 @@ export default function PetaKabupatenPage() {
             <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
             <span className="sr-only">Tanggal data</span>
             <select
-              value={selectedDate}
-              onChange={(event) => handleDateChange(event.target.value)}
+              value={config.tanggal || data?.tanggal || ""}
+              onChange={(event) =>
+                setConfig((current) => ({ ...current, tanggal: event.target.value }))
+              }
               disabled={availableDates.length === 0}
               aria-label="Pilih tanggal data"
               className="rounded-md border border-[var(--peta-border-strong)] bg-[var(--peta-surface-2)] px-2 py-1.5 text-[11px] text-[var(--peta-text)] focus:border-[var(--peta-accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {availableDates.length === 0 && (
-                <option value="">Belum ada data</option>
-              )}
+              {availableDates.length === 0 && <option value="">Belum ada data</option>}
               {availableDates.map((date) => (
                 <option key={date} value={date}>
                   {formatTanggal(date)}
@@ -470,38 +714,87 @@ export default function PetaKabupatenPage() {
             </select>
           </label>
 
-          <div ref={searchRef} className="relative w-full max-w-[220px] sm:w-auto">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--peta-mute)]" />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Cari kabupaten/kota…"
-              aria-label="Cari kabupaten atau kota"
-              className="w-full rounded-md border border-[var(--peta-border-strong)] bg-[var(--peta-surface-2)] py-1.5 pl-8 pr-2 text-xs text-[var(--peta-text)] placeholder:text-[var(--peta-mute)] focus:border-[var(--peta-accent)] focus:outline-none"
-            />
-            {results.length > 0 && (
-              <ul className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-lg border border-[var(--peta-border-strong)] bg-[var(--peta-surface-2)] shadow-2xl">
-                {results.map((item) => (
-                  <li key={item.key}>
-                    <button
-                      type="button"
-                      onClick={() => focusKabupaten(item.key, item.feature)}
-                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-[var(--peta-dim)] transition-colors hover:bg-white/5 hover:text-[var(--peta-text)]"
-                    >
-                      <span className="truncate">
-                        <span className="text-[var(--peta-text)]">{item.name}</span>
-                        <span className="ml-1.5 text-[var(--peta-mute)]">{item.provinsi}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums text-[var(--peta-mute)]">
-                        {item.view ? formatPercent(item.view.ratio) : "—"}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          {!reportMode && (
+            <div ref={searchRef} className="relative w-full max-w-[220px] sm:w-auto">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--peta-mute)]" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Cari kabupaten/kota…"
+                aria-label="Cari kabupaten atau kota"
+                className="w-full rounded-md border border-[var(--peta-border-strong)] bg-[var(--peta-surface-2)] py-1.5 pl-8 pr-2 text-xs text-[var(--peta-text)] placeholder:text-[var(--peta-mute)] focus:border-[var(--peta-accent)] focus:outline-none"
+              />
+              {results.length > 0 && (
+                <ul className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-lg border border-[var(--peta-border-strong)] bg-[var(--peta-surface-2)] shadow-2xl">
+                  {results.map((item) => (
+                    <li key={item.key}>
+                      <button
+                        type="button"
+                        onClick={() => focusGeoKey(item.key)}
+                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-[var(--peta-dim)] transition-colors hover:bg-white/5 hover:text-[var(--peta-text)]"
+                      >
+                        <span className="truncate">
+                          <span className="text-[var(--peta-text)]">{item.name}</span>
+                          <span className="ml-1.5 text-[var(--peta-mute)]">{item.provinsi}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-[var(--peta-mute)]">
+                          {item.view ? item.view.metricText : "—"}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {!reportMode && (
+            <button
+              type="button"
+              onClick={() => setConfigOpen(true)}
+              className="peta-focus inline-flex items-center gap-1.5 rounded-md border border-[var(--peta-border-strong)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--peta-dim)] transition-colors hover:bg-white/5 hover:text-[var(--peta-text)]"
+            >
+              <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
+              Konfigurasi
+              {activeFilterCount > 0 && (
+                <span className="rounded-full bg-[var(--peta-accent)] px-1.5 py-px text-[9px] font-bold text-[var(--peta-accent-ink)]">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {!reportMode && activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={resetDashboard}
+              title="Reset semua filter"
+              className="peta-focus inline-flex items-center gap-1 rounded-md border border-[var(--peta-border-strong)] px-2 py-1.5 text-[10px] font-medium text-[var(--peta-mute)] transition-colors hover:bg-white/5 hover:text-[var(--peta-text)]"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Reset
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              const next = !reportMode;
+              setReportMode(next);
+              if (next) setPanelOpen(true);
+              setConfigOpen(false);
+            }}
+            aria-pressed={reportMode}
+            className={`peta-focus inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+              reportMode
+                ? "border-[var(--peta-accent)] bg-[var(--peta-accent)]/10 text-[var(--peta-accent)]"
+                : "border-[var(--peta-border-strong)] text-[var(--peta-dim)] hover:bg-white/5 hover:text-[var(--peta-text)]"
+            }`}
+          >
+            <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+            {reportMode ? "Keluar Laporan" : "Laporan"}
+          </button>
 
           <Link
             href="/lingkup-nasional"
@@ -515,7 +808,7 @@ export default function PetaKabupatenPage() {
           <button
             type="button"
             onClick={exportOccupancy}
-            disabled={!tanggal}
+            disabled={!tanggalAktif}
             title="Unduh laporan keterisian gudang (Excel)"
             className="peta-focus inline-flex items-center gap-1.5 rounded-md border border-[var(--peta-border-strong)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--peta-dim)] transition-colors hover:bg-white/5 hover:text-[var(--peta-text)] disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -534,187 +827,345 @@ export default function PetaKabupatenPage() {
         </div>
       </header>
 
+      {!reportMode && chips.length > 0 && (
+        <div className="peta-scroll relative z-20 flex items-center gap-1.5 overflow-x-auto border-b border-[var(--peta-border)] bg-[var(--peta-surface)]/60 px-4 py-1.5 sm:px-6">
+          <span className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-mute)]">
+            Filter aktif
+          </span>
+          {chips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              onClick={chip.clear}
+              title={`Hapus filter ${chip.label}`}
+              className="peta-focus inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--peta-border-strong)] bg-[var(--peta-surface-2)] px-2 py-0.5 text-[10px] text-[var(--peta-dim)] transition-colors hover:border-[var(--peta-accent)]/60 hover:text-[var(--peta-text)]"
+            >
+              {chip.label}
+              <X className="h-2.5 w-2.5" />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={resetDashboard}
+            className="peta-focus ml-auto shrink-0 text-[10px] text-[var(--peta-mute)] underline-offset-2 hover:text-[var(--peta-text)] hover:underline"
+          >
+            Hapus semua
+          </button>
+        </div>
+      )}
+
       <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
         <aside
-          className={`peta-panel absolute left-3 top-3 z-20 w-[288px] max-w-[calc(100%-1.5rem)] rounded-xl border border-[var(--peta-border)] bg-[var(--peta-panel)] p-4 backdrop-blur-md sm:left-4 sm:top-4 lg:static lg:w-[300px] lg:max-w-none lg:shrink-0 lg:rounded-none lg:border-0 lg:border-r lg:border-[var(--peta-border)] lg:bg-[var(--peta-surface)]/40 lg:p-5 lg:backdrop-blur-none ${
+          className={`peta-panel absolute left-3 top-3 z-20 w-[300px] max-w-[calc(100%-1.5rem)] rounded-xl border border-[var(--peta-border)] bg-[var(--peta-panel)] p-4 backdrop-blur-md sm:left-4 sm:top-4 lg:static lg:w-[320px] lg:max-w-none lg:shrink-0 lg:rounded-none lg:border-0 lg:border-r lg:border-[var(--peta-border)] lg:bg-[var(--peta-surface)]/40 lg:p-5 lg:backdrop-blur-none ${
             panelOpen ? "block" : "hidden"
           } lg:block`}
         >
-          <h2 className="font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-mute)]">
-            Kapasitas nasional
+          {reportMode && (
+            <div className="mb-3 rounded-lg border border-[var(--peta-accent)]/30 bg-[var(--peta-accent)]/[0.06] px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-accent)]">
+                Laporan Manajemen
+              </p>
+              <p className="mt-1 text-[10px] leading-relaxed text-[var(--peta-dim)]">
+                Snapshot {tanggalAktif ? formatTanggal(tanggalAktif) : "—"} · {scopeLabel}
+              </p>
+              <p className="mt-0.5 text-[9px] leading-relaxed text-[var(--peta-mute)]">
+                Sumber: {data?.meta.sumber ?? "MB52 + ZSD_SODO + master kapasitas"}
+              </p>
+            </div>
+          )}
+
+          <h2 className="font-display text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-mute)]">
+            {indikatorLabel} · {scopeLabel}
           </h2>
 
           <div className="mt-2 flex items-end gap-2">
-            <span className="font-display text-[34px] font-semibold leading-none tracking-tight text-[var(--peta-text)] tabular-nums">
-              {formatPercent(coverage.ratio)}
+            <span className="font-display text-[32px] font-semibold leading-none tracking-tight text-[var(--peta-text)] tabular-nums">
+              {kpiMetric == null
+                ? "N/A"
+                : isRatioIndikator(indikator)
+                  ? formatPercent(kpiMetric)
+                  : formatTon(kpiMetric)}
             </span>
             <span className="pb-1 text-[10px] leading-tight text-[var(--peta-mute)]">
-              terisi dari
-              <br />
-              kapasitas gudang
+              {isRatioIndikator(indikator) ? (
+                <>
+                  terisi dari
+                  <br />
+                  kapasitas gudang
+                </>
+              ) : (
+                <>
+                  ton
+                  <br />
+                  indikator aktif
+                </>
+              )}
             </span>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-            <div className="rounded-lg bg-white/[0.03] px-2.5 py-2">
-              <div className="text-[10px] text-[var(--peta-mute)]">Kapasitas</div>
-              <div className="mt-0.5 font-display text-sm text-[var(--peta-text)] tabular-nums">
-                {coverage.kapasitas > 0 ? `${formatTon(coverage.kapasitas)} t` : "—"}
-              </div>
-            </div>
-            <div className="rounded-lg bg-white/[0.03] px-2.5 py-2">
-              <div className="text-[10px] text-[var(--peta-mute)]">Stok admin</div>
-              <div className="mt-0.5 font-display text-sm text-[var(--peta-text)] tabular-nums">
-                {formatTon(coverage.stokAdmin)} t
-              </div>
-            </div>
-            <div className="rounded-lg bg-white/[0.03] px-2.5 py-2">
-              <div className="text-[10px] text-[var(--peta-mute)]">Sisa ruang</div>
-              <div className="mt-0.5 font-display text-sm text-[var(--peta-text)] tabular-nums">
-                {formatTon(coverage.sisa)} t
-              </div>
-            </div>
-            <div className="rounded-lg bg-white/[0.03] px-2.5 py-2">
-              <div className="text-[10px] text-[var(--peta-mute)]">Stok fisik</div>
-              <div className="mt-0.5 font-display text-sm text-[var(--peta-text)] tabular-nums">
-                {formatTon(coverage.stokFisik)} t
-              </div>
-            </div>
-          </div>
-
-          {summary && (
+          {kpi && (
             <>
               <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-                <div className="rounded-lg border border-[var(--peta-border)] bg-white/[0.02] px-2.5 py-2">
-                  <div className="text-[10px] text-[var(--peta-mute)]">Gudang dipantau</div>
-                  <div className="mt-0.5 font-display text-sm text-[var(--peta-text)] tabular-nums">
-                    {summary.gudang.aktif}{" "}
-                    <span className="text-[10px] font-normal text-[var(--peta-mute)]">
-                      / {summary.gudang.total} total
-                    </span>
+                {[
+                  { label: "Kapasitas", value: `${formatTonOrNA(kpi.kapasitas)} t` },
+                  { label: "Stok fisik", value: `${formatTonOrNA(kpi.stok_fisik)} t` },
+                  { label: "Intransit", value: `${formatTonOrNA(kpi.intransit)} t` },
+                  { label: "Total stok", value: `${formatTonOrNA(kpi.total_stok)} t` },
+                  { label: "Stok admin", value: `${formatTonOrNA(kpi.stok_admin)} t` },
+                  { label: "Outstanding SO", value: `${formatTonOrNA(kpi.outstanding_so)} t` },
+                  { label: "Sisa ruang", value: `${formatTonOrNA(kpi.sisa_ruang)} t` },
+                  {
+                    label: "Keterisian admin",
+                    value: formatPercentOrNA(kpi.keterisian_admin),
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-lg bg-white/[0.03] px-2.5 py-2"
+                    title={
+                      item.label === "Sisa ruang"
+                        ? "Sisa ruang = kapasitas - stok admin"
+                        : undefined
+                    }
+                  >
+                    <div className="text-[10px] text-[var(--peta-mute)]">{item.label}</div>
+                    <div className="mt-0.5 font-display text-sm text-[var(--peta-text)] tabular-nums">
+                      {item.value}
+                    </div>
                   </div>
+                ))}
+              </div>
+
+              <div className="mt-2 grid grid-cols-3 gap-1.5 rounded-lg border border-[var(--peta-border)] bg-white/[0.02] px-2 py-1.5 text-[10px]">
+                <div>
+                  <span className="block text-[var(--peta-mute)]">Admin</span>
+                  <span className="font-display tabular-nums text-[var(--peta-dim)]">
+                    {formatPercentOrNA(kpi.keterisian_admin)}
+                  </span>
                 </div>
-                <div className="rounded-lg border border-[var(--peta-border)] bg-white/[0.02] px-2.5 py-2">
-                  <div className="text-[10px] text-[var(--peta-mute)]">Kode plant</div>
-                  <div className="mt-0.5 font-display text-sm text-[var(--peta-text)] tabular-nums">
-                    {summary.gudang.kode_plant}
-                  </div>
+                <div>
+                  <span className="block text-[var(--peta-mute)]">Fisik</span>
+                  <span className="font-display tabular-nums text-[var(--peta-dim)]">
+                    {formatPercentOrNA(kpi.keterisian_fisik)}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[var(--peta-mute)]">Total</span>
+                  <span className="font-display tabular-nums text-[var(--peta-dim)]">
+                    {formatPercentOrNA(kpi.keterisian_total)}
+                  </span>
                 </div>
               </div>
 
-              <div className="mt-2 rounded-lg border border-dashed border-[var(--peta-border-strong)] px-2.5 py-2"
-                title={summary.komoditas
-                  .map((item) => `${item.tipe_pupuk} ${formatTon(item.pabrik_fisik)} t`)
-                  .join(" · ")}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--peta-mute)]">
-                    Stok pabrik
-                  </span>
-                  <span className="text-[10px] tabular-nums text-[var(--peta-mute)]">
-                    {summary.pabrik.plant} plant tanpa gudang
-                  </span>
-                </div>
-                <div className="mt-1 flex items-baseline justify-between">
-                  <span className="font-display text-sm text-[var(--peta-text)] tabular-nums">
-                    {formatTon(summary.pabrik.fisik)} t
-                  </span>
-                  <span className="text-[10px] text-[var(--peta-mute)]">
-                    intransit {formatTon(summary.pabrik.intransit)} t
-                  </span>
-                </div>
-                <p className="mt-1 text-[10px] leading-snug text-[var(--peta-mute)]">
-                  {formatTon(summary.stok_gudang.fisik)} t gudang +{" "}
-                  {formatTon(summary.pabrik.fisik)} t pabrik ={" "}
-                  {formatTon(summary.total_sap.fisik)} t total SAP
+              {kpi.outstanding_so == null && (
+                <p className="mt-2 flex items-start gap-1.5 rounded-md border border-[var(--st-warn)]/30 bg-[var(--st-warn)]/[0.07] px-2.5 py-2 text-[10px] leading-relaxed text-[var(--peta-dim)]">
+                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-[var(--st-warn)]" />
+                  Stok admin dan sisa ruang N/A karena Outstanding SO belum bisa dipisah
+                  untuk filter ini.
                 </p>
-              </div>
+              )}
             </>
           )}
 
-          <ul className="mt-3 space-y-1.5">
-            {STATUS_ORDER.map((status) => (
-              <li key={status} className="flex items-center gap-2 text-[11px]">
-                <span className={`peta-dot peta-fill-${status}`} aria-hidden="true" />
-                <span
-                  className="flex-1 truncate text-[var(--peta-dim)]"
-                  title={STATUS_DESCRIPTION[status]}
-                >
-                  {STATUS_LABEL[status]}
-                </span>
-                <span className="font-display text-[var(--peta-text)] tabular-nums">
-                  {coverage.counts[status] ?? 0}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-4 border-t border-[var(--peta-border)] pt-3">
+            <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-mute)]">
+              Sebaran status peta
+            </h3>
+            <ul className="mt-2 space-y-1">
+              {[...mapScale.legends, { status: "na" as const, label: "Tanpa nilai" }, { status: "none" as const, label: "Belum ada data" }].map(
+                (item) => (
+                  <li key={item.status} className="flex items-center gap-2 text-[11px]">
+                    <span
+                      className={`peta-dot peta-fill-${item.status}`}
+                      aria-hidden="true"
+                    />
+                    <span className="flex-1 truncate text-[var(--peta-dim)]" title={item.label}>
+                      {item.label}
+                    </span>
+                    <span className="font-display text-[var(--peta-text)] tabular-nums">
+                      {statusCounts[item.status]}
+                    </span>
+                  </li>
+                ),
+              )}
+            </ul>
+          </div>
 
-          {fullest.length > 0 && (
+          {ranking && (
             <div className="mt-4 border-t border-[var(--peta-border)] pt-3">
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-mute)]">
-                Paling penuh
-              </h3>
-              <ul className="mt-2 space-y-1">
-                {fullest.map((view) => (
-                  <li key={view.key}>
-                    <button
-                      type="button"
-                      onClick={() => focusByKey(view.key)}
-                      className="peta-focus flex w-full items-center justify-between gap-2 rounded-md px-1.5 py-1 text-left text-[11px] text-[var(--peta-dim)] transition-colors hover:bg-white/5 hover:text-[var(--peta-text)]"
-                    >
-                      <span className="truncate">{displayKabupaten(view.kabupaten)}</span>
-                      <span
-                        className="shrink-0 font-display tabular-nums"
-                        style={{ color: STATUS_VAR[view.status] }}
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-mute)]">
+                  Peringkat {ranking.level === "gudang" ? "gudang" : "kabupaten"}
+                </h3>
+                <span className="text-[9px] text-[var(--peta-mute)]">Top 10</span>
+              </div>
+              <div className="mt-2 flex gap-1 rounded-md border border-[var(--peta-border)] bg-[var(--peta-surface-2)] p-0.5">
+                {(
+                  [
+                    ["penuh", "Paling penuh"],
+                    ["kosong", "Ruang kosong"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setRankingTab(value)}
+                    aria-pressed={rankingTab === value}
+                    className={`peta-focus flex-1 rounded px-1.5 py-1 text-[10px] font-medium transition-colors ${
+                      rankingTab === value
+                        ? "bg-[var(--peta-accent)] text-[var(--peta-accent-ink)]"
+                        : "text-[var(--peta-dim)] hover:text-[var(--peta-text)]"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {!ranking.tersedia ? (
+                <p className="mt-2 rounded-md border border-[var(--st-warn)]/30 bg-[var(--st-warn)]/[0.06] px-2.5 py-2 text-[10px] leading-relaxed text-[var(--peta-dim)]">
+                  {ranking.alasan}
+                </p>
+              ) : rankingItems.length === 0 ? (
+                <p className="mt-2 text-[10px] text-[var(--peta-mute)]">
+                  Belum ada wilayah yang memenuhi syarat peringkat.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-0.5">
+                  {rankingItems.map((item, index) => (
+                    <li key={`${rankingTab}-${item.key}`}>
+                      <button
+                        type="button"
+                        onClick={() => focusRankingItem(item)}
+                        className="peta-focus flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[11px] text-[var(--peta-dim)] transition-colors hover:bg-white/5 hover:text-[var(--peta-text)]"
                       >
-                        {formatPercent(view.ratio)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                        <span className="w-3 shrink-0 text-[9px] tabular-nums text-[var(--peta-mute)]">
+                          {index + 1}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate" title={item.nama}>
+                          {ranking.level === "gudang"
+                            ? item.nama
+                            : displayKabupaten(item.kota ?? item.nama)}
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span
+                            className="block font-display tabular-nums"
+                            style={{
+                              color:
+                                rankingTab === "penuh"
+                                  ? isRatioIndikator(indikator)
+                                    ? STATUS_VAR[
+                                        statusForRatio(item.nilai, config.thresholds)
+                                      ]
+                                    : "var(--peta-dim)"
+                                  : "var(--st-ok)",
+                            }}
+                          >
+                            {rankingTab === "penuh"
+                              ? formatIndicatorValue(item.nilai, indikator)
+                              : `${formatTonOrNA(item.nilai)} t`}
+                          </span>
+                          {rankingTab === "penuh" && (
+                            <span className="block text-[9px] tabular-nums text-[var(--peta-mute)]">
+                              admin {formatPercentOrNA(item.keterisian_admin)}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
-          {emptiest.length > 0 && (
+          {data && (
             <div className="mt-4 border-t border-[var(--peta-border)] pt-3">
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-mute)]">
-                Ruang kosong terbesar
-              </h3>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-mute)]">
+                  Stok Pabrik
+                </h3>
+                <span className="rounded-full border border-[var(--peta-border-strong)] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-[var(--peta-mute)]">
+                  Nasional · di luar KPI gudang
+                </span>
+              </div>
+              <div className="mt-2 rounded-lg border border-dashed border-[var(--peta-border-strong)] px-2.5 py-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-display text-sm text-[var(--peta-text)] tabular-nums">
+                    {formatTonOrNA(data.pabrik.total.total_stok)} t
+                  </span>
+                  <span className="text-[10px] text-[var(--peta-mute)]">
+                    {data.pabrik.total.plant} plant
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-[var(--peta-mute)]">
+                  <span>Fisik {formatTonOrNA(data.pabrik.total.fisik)} t</span>
+                  <span>Intransit {formatTonOrNA(data.pabrik.total.intransit)} t</span>
+                </div>
+                <p className="mt-1 text-[10px] leading-relaxed text-[var(--peta-mute)]">
+                  Kontribusi {formatPercentOrNA(data.pabrik.kontribusi_nasional)} dari total{" "}
+                  {formatTonOrNA(data.pabrik.total_nasional_stok)} t (stok gudang cakupan +
+                  pabrik nasional).
+                </p>
+              </div>
+
               <ul className="mt-2 space-y-1">
-                {emptiest.map((view) => (
-                  <li key={view.key}>
-                    <button
-                      type="button"
-                      onClick={() => focusByKey(view.key)}
-                      className="peta-focus flex w-full items-center justify-between gap-2 rounded-md px-1.5 py-1 text-left text-[11px] text-[var(--peta-dim)] transition-colors hover:bg-white/5 hover:text-[var(--peta-text)]"
+                {PABRIK_BUCKET_ORDER.map((bucket) => {
+                  const item = data.pabrik[bucket];
+                  return (
+                    <li
+                      key={bucket}
+                      className="flex items-center gap-2 text-[10px] text-[var(--peta-dim)]"
                     >
-                      <span className="truncate">{displayKabupaten(view.kabupaten)}</span>
-                      <span className="shrink-0 font-display tabular-nums text-[var(--st-ok)]">
-                        {formatTon(view.kapasitas - view.stokAdmin)} t
+                      <span className="flex-1 truncate">{PABRIK_BUCKET_LABEL[bucket]}</span>
+                      <span className="tabular-nums text-[var(--peta-text)]">
+                        {formatTonOrNA(item.fisik)} t
                       </span>
-                    </button>
-                  </li>
-                ))}
+                      <span className="w-10 text-right tabular-nums text-[var(--peta-mute)]">
+                        {formatPercentOrNA(item.kontribusi)}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
+              <p className="mt-1.5 text-[9px] leading-relaxed text-[var(--peta-mute)]">
+                Stok pabrik mengikuti filter produk/subsidi, tetapi selalu berskala nasional dan
+                tidak dicampur ke KPI gudang.
+              </p>
             </div>
           )}
 
-          <p className="mt-4 border-t border-[var(--peta-border)] pt-2 text-[10px] leading-relaxed text-[var(--peta-mute)]">
-            {coverage.counts.none} dari {coverage.polygons} kabupaten/kota belum punya
-            gudang dan tampil abu-abu.{" "}
-            {coverage.tanpaKapasitas > 0
-              ? `${coverage.tanpaKapasitas} gudang (${formatTon(coverage.stokTanpaKapasitas)} t stok admin) belum punya data kapasitas, jadi tidak ikut dihitung.`
-              : "Semua gudang sudah punya data kapasitas."}{" "}
-            Gudang pabrik/pelabuhan dan gudang yang tidak dicentang di Lingkup
-            Nasional tidak dihitung.
+          {warnings.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {warnings.map((warning) => (
+                <p
+                  key={warning}
+                  className="flex items-start gap-1.5 rounded-md border border-[var(--st-warn)]/30 bg-[var(--st-warn)]/[0.06] px-2.5 py-2 text-[10px] leading-relaxed text-[var(--peta-dim)]"
+                >
+                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-[var(--st-warn)]" />
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {data && (
+            <p className="mt-3 border-t border-[var(--peta-border)] pt-2 text-[9px] leading-relaxed text-[var(--peta-mute)]">
+              Sumber: {data.meta.sumber}. {data.meta.kapasitas_basis}.
+            </p>
+          )}
+
+          <p className="mt-2 border-t border-[var(--peta-border)] pt-2 text-[9px] leading-relaxed text-[var(--peta-mute)]">
+            {data
+              ? `${statusCounts.none} dari ${(geo?.features ?? []).length} kabupaten/kota belum punya gudang. ${data.meta.gudang_tanpa_kapasitas} gudang tanpa kapasitas; ${formatTonOrNA(data.meta.liter_dikecualikan)} liter tidak dihitung ke ton. Gudang nonaktif / di luar Lingkup Nasional dikecualikan.`
+              : "Memuat cakupan gudang…"}
           </p>
         </aside>
 
         <div className="relative min-h-0 flex-1">
           <KabupatenMap
             geo={geo}
-            views={views}
+            views={geoViews}
             selectedKey={selectedKey}
             onSelect={handleSelect}
             center={center}
@@ -725,17 +1176,55 @@ export default function PetaKabupatenPage() {
             }}
           />
 
+          {!reportMode && (
+            <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[240px] rounded-lg border border-[var(--peta-border)] bg-[var(--peta-panel)] px-2.5 py-1.5 text-[10px] text-[var(--peta-dim)] backdrop-blur-md sm:left-4 sm:top-4 lg:left-4">
+              <span className="block text-[9px] uppercase tracking-[0.12em] text-[var(--peta-mute)]">
+                Warna peta
+              </span>
+              <span className="mt-0.5 block font-medium text-[var(--peta-text)]">
+                {indikatorLabel}
+              </span>
+              {!isRatioIndikator(indikator) && (
+                <span className="mt-0.5 block text-[9px] text-[var(--peta-mute)]">
+                  Skala relatif antarwilayah
+                </span>
+              )}
+            </div>
+          )}
+
           {loading && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
               <span className="rounded-full border border-[var(--peta-border-strong)] bg-[var(--peta-surface)]/90 px-4 py-2 text-xs text-[var(--peta-dim)]">
-                Memuat peta dan data stok…
+                Memuat peta dan data agregat…
               </span>
             </div>
           )}
 
           {error && (
-            <div className="absolute left-1/2 top-6 z-30 -translate-x-1/2 rounded-lg border border-red-500/40 bg-red-950/80 px-4 py-2 text-xs text-red-100">
-              {error}
+            <div className="absolute left-1/2 top-6 z-30 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-red-500/40 bg-red-950/80 px-4 py-2 text-xs text-red-100">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{error}</span>
+              <button
+                type="button"
+                onClick={() => setReloadKey((key) => key + 1)}
+                className="peta-focus rounded border border-red-300/30 px-2 py-0.5 text-[10px] hover:bg-red-500/20"
+              >
+                Coba lagi
+              </button>
+            </div>
+          )}
+
+          {empty && !loading && !error && (
+            <div className="absolute left-1/2 top-6 z-30 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-[var(--peta-border-strong)] bg-[var(--peta-surface)]/95 px-4 py-2 text-xs text-[var(--peta-dim)]">
+              <Info className="h-3.5 w-3.5 shrink-0" />
+              Tidak ada gudang yang cocok dengan filter ini.
+              <button
+                type="button"
+                onClick={resetDashboard}
+                className="peta-focus rounded border border-[var(--peta-border-strong)] px-2 py-0.5 text-[10px] hover:bg-white/5"
+              >
+                Reset
+              </button>
             </div>
           )}
 
@@ -745,12 +1234,19 @@ export default function PetaKabupatenPage() {
             }`}
           >
             <ul className="pointer-events-auto flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[var(--peta-border)] bg-[var(--peta-panel)] px-3 py-2 text-[10px] text-[var(--peta-dim)] backdrop-blur-md">
-              {STATUS_ORDER.map((status) => (
-                <li key={status} className="flex items-center gap-1.5">
-                  <span className={`peta-dot peta-fill-${status}`} aria-hidden="true" />
-                  {LEGEND_TEXT[status]}
+              {mapScale.legends.map((item) => (
+                <li key={item.status} className="flex items-center gap-1.5">
+                  <span
+                    className={`peta-dot peta-fill-${item.status}`}
+                    aria-hidden="true"
+                  />
+                  {item.label}
                 </li>
               ))}
+              <li className="flex items-center gap-1.5">
+                <span className="peta-dot peta-fill-none" aria-hidden="true" />
+                Belum ada data
+              </li>
             </ul>
 
             <div className="pointer-events-auto flex flex-col overflow-hidden rounded-lg border border-[var(--peta-border)] bg-[var(--peta-panel)] backdrop-blur-md">
@@ -784,18 +1280,20 @@ export default function PetaKabupatenPage() {
             </div>
           </div>
 
-          {(selected || selectedFeature) && (
+          {(selectedNode || selectedFeature) && (
             <div className="pointer-events-none absolute inset-0 z-30">
-              <aside className="peta-drawer pointer-events-auto absolute inset-x-0 bottom-0 max-h-[68dvh] overflow-hidden rounded-t-2xl border-t border-[var(--peta-border-strong)] bg-[var(--peta-surface)] p-4 sm:inset-y-4 sm:left-auto sm:right-4 sm:max-h-none sm:w-[344px] sm:rounded-xl sm:border">
+              <aside className="peta-drawer pointer-events-auto absolute inset-x-0 bottom-0 max-h-[70dvh] overflow-hidden rounded-t-2xl border-t border-[var(--peta-border-strong)] bg-[var(--peta-surface)] p-4 sm:inset-y-4 sm:left-auto sm:right-4 sm:max-h-none sm:w-[352px] sm:rounded-xl sm:border">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-mute)]">
-                      {titleCaseName(selected?.provinsi ?? selectedFeature?.properties.WADMPR)}
+                      {titleCaseName(
+                        selectedNode?.provinsi ?? selectedFeature?.properties.WADMPR,
+                      )}
                     </p>
                     <h2 className="mt-1 font-display text-lg font-semibold leading-tight text-[var(--peta-text)]">
-                      {selected
-                        ? displayKabupaten(selected.kabupaten)
-                        : selectedFeature?.properties.WADMKK ?? "Kabupaten"}
+                      {selectedNode
+                        ? displayKabupaten(selectedNode.kota ?? selectedNode.nama)
+                        : displayKabupaten(selectedFeature?.properties.WADMKK ?? "Kabupaten")}
                     </h2>
                   </div>
                   <button
@@ -808,124 +1306,125 @@ export default function PetaKabupatenPage() {
                   </button>
                 </div>
 
-                {selected ? (
-                  <>
-                    <div className="mt-3 flex items-start gap-2">
+                {selectedNode ? (
+                  <div className="peta-scroll mt-3 max-h-[calc(70dvh-4.5rem)] overflow-y-auto pr-1 sm:max-h-[calc(100dvh-7rem)]">
+                    <div className="flex items-start gap-2">
                       <span
-                        className={`peta-dot mt-1 peta-fill-${basisStatus}`}
+                        className={`peta-dot mt-1 peta-fill-${selectedView?.status ?? "none"}`}
                         aria-hidden="true"
                       />
                       <div className="min-w-0">
                         <p className="text-xs leading-tight text-[var(--peta-dim)]">
-                          {STATUS_LABEL[basisStatus]}
+                          {selectedView?.statusLabel ?? STATUS_LABEL.none}
                         </p>
                         <p className="mt-0.5 text-[10px] leading-snug text-[var(--peta-mute)]">
-                          {STATUS_DESCRIPTION[basisStatus]}
+                          {indikatorLabel} {formatIndicatorValue(selectedMetric, indikator)}
                         </p>
                       </div>
-                    </div>
-
-                    <div
-                      role="group"
-                      aria-label="Pilih dasar stok"
-                      className="mt-3 flex items-center gap-1 rounded-lg border border-[var(--peta-border)] bg-[var(--peta-surface-2)] p-1"
-                    >
-                      {(["admin", "fisik"] as const).map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          aria-pressed={basis === option}
-                          onClick={() => setBasis(option)}
-                          className={`peta-focus flex-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                            basis === option
-                              ? "bg-[var(--peta-accent)] text-[var(--peta-accent-ink)]"
-                              : "text-[var(--peta-dim)] hover:text-[var(--peta-text)]"
-                          }`}
-                        >
-                          Stok {option}
-                        </button>
-                      ))}
                     </div>
 
                     <dl className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
-                      <div>
-                        <dt className="text-[10px] text-[var(--peta-mute)]">
-                          {basis === "admin" ? "Stok admin" : "Stok fisik + transit"}
-                        </dt>
-                        <dd className="mt-0.5 font-display text-sm text-[var(--peta-text)] tabular-nums">
-                          {formatTon(basisStok)}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-[10px] text-[var(--peta-mute)]">Kapasitas</dt>
-                        <dd className="mt-0.5 font-display text-sm text-[var(--peta-text)] tabular-nums">
-                          {selected.kapasitas > 0 ? formatTon(selected.kapasitas) : "—"}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-[10px] text-[var(--peta-mute)]">Utilisasi</dt>
-                        <dd
-                          className="mt-0.5 font-display text-sm tabular-nums"
-                          style={{ color: STATUS_VAR[basisStatus] }}
-                        >
-                          {formatPercent(basisRatio)}
-                        </dd>
-                      </div>
+                      {[
+                        {
+                          label: "Kapasitas",
+                          value: `${formatTonOrNA(selectedNode.kapasitas)} t`,
+                        },
+                        {
+                          label: "Stok fisik",
+                          value: `${formatTonOrNA(selectedNode.stok_fisik)} t`,
+                        },
+                        {
+                          label: "Intransit",
+                          value: `${formatTonOrNA(selectedNode.intransit)} t`,
+                        },
+                        {
+                          label: "Total stok",
+                          value: `${formatTonOrNA(selectedNode.total_stok)} t`,
+                        },
+                        {
+                          label: "Stok admin",
+                          value: `${formatTonOrNA(selectedNode.stok_admin)} t`,
+                        },
+                        {
+                          label: "Outstanding SO",
+                          value: `${formatTonOrNA(selectedNode.outstanding_so)} t`,
+                        },
+                        {
+                          label: "Sisa ruang",
+                          value: `${formatTonOrNA(selectedNode.sisa_ruang)} t`,
+                        },
+                        {
+                          label: "Keterisian admin",
+                          value: formatPercentOrNA(selectedNode.keterisian_admin),
+                        },
+                        {
+                          label: "Keterisian fisik",
+                          value: formatPercentOrNA(selectedNode.keterisian_fisik),
+                        },
+                        {
+                          label: "Keterisian total",
+                          value: formatPercentOrNA(selectedNode.keterisian_total),
+                        },
+                        {
+                          label: "Gudang",
+                          value: `${selectedNode.gudang_count}`,
+                        },
+                        {
+                          label: "Anper",
+                          value: selectedNode.anper?.join(", ") || "—",
+                        },
+                      ].map((item) => (
+                        <div key={item.label} className="min-w-0">
+                          <dt className="text-[9px] text-[var(--peta-mute)]">{item.label}</dt>
+                          <dd className="mt-0.5 truncate font-display text-[11px] text-[var(--peta-text)] tabular-nums" title={item.value}>
+                            {item.value}
+                          </dd>
+                        </div>
+                      ))}
                     </dl>
 
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-                      <div
-                        className={`h-full rounded-full peta-fill-${basisStatus}`}
-                        style={{ width: `${Math.min(100, (basisRatio ?? 0) * 100)}%` }}
-                      />
-                    </div>
+                    {selectedNode.kapasitas > 0 && selectedRatio != null && (
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                        <div
+                          className={`h-full rounded-full peta-fill-${selectedView?.status ?? "ok"}`}
+                          style={{ width: `${Math.min(100, selectedRatio * 100)}%` }}
+                        />
+                      </div>
+                    )}
 
-                    {selected.transitTransfer > 0 && (
+                    {selectedNode.transit_transfer > 0 && (
                       <p className="mt-2 text-[10px] leading-relaxed text-[var(--peta-mute)]">
                         Sekitar{" "}
                         <b className="tabular-nums text-[var(--peta-dim)]">
-                          {formatTon(selected.transitTransfer)} ton
+                          {formatTon(selectedNode.transit_transfer)} ton
                         </b>{" "}
-                        berstatus <b className="text-[var(--peta-dim)]">transit transfer</b> —
-                        barang sedang menuju gudang ini. Angka ini sudah termasuk pada basis
-                        stok fisik.
+                        berstatus transit transfer — barang menuju gudang ini.
                       </p>
                     )}
 
-                    {selected.kapasitas > 0 ? (
-                      <p className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--peta-mute)]">
-                        <span>
-                          {selected.kapasitas >= basisStok ? "Sisa ruang" : "Kelebihan stok"}
-                        </span>
-                        <span className="font-display text-[11px] tabular-nums text-[var(--peta-dim)]">
-                          {formatTon(Math.abs(selected.kapasitas - basisStok))} ton
-                        </span>
-                      </p>
-                    ) : (
-                      <p className="mt-3 rounded-md border border-[var(--peta-border)] bg-white/[0.02] px-2.5 py-2 text-[10px] leading-relaxed text-[var(--peta-mute)]">
-                        Kapasitas gudang di wilayah ini belum ada di master, jadi utilisasi
-                        tidak dihitung.
+                    {selectedNode.kapasitas <= 0 && (
+                      <p className="mt-2 rounded-md border border-[var(--peta-border)] bg-white/[0.02] px-2.5 py-2 text-[10px] leading-relaxed text-[var(--peta-mute)]">
+                        Kapasitas gudang di wilayah ini belum ada di master, jadi rasio tidak
+                        dihitung. Nilai stok tetap ditampilkan.
                       </p>
                     )}
 
-                    <div className="mt-4 border-t border-[var(--peta-border)] pt-3">
-                      <div className="flex items-baseline justify-between">
+                    <div className="mt-3 border-t border-[var(--peta-border)] pt-3">
+                      <div className="flex items-baseline justify-between gap-2">
                         <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--peta-mute)]">
                           Gudang ({gudangList.length})
                         </h3>
-                        <span className="text-[10px] text-[var(--peta-mute)]">
-                          stok {basis}
+                        <span className="truncate text-[9px] text-[var(--peta-mute)]">
+                          urut {indikatorLabel}
                         </span>
                       </div>
-                      <ul className="peta-scroll mt-2 max-h-[34dvh] space-y-0.5 overflow-y-auto pr-1 sm:max-h-[calc(100dvh-27rem)]">
+                      <ul className="mt-2 space-y-0.5">
                         {gudangList.map((gudang) => {
-                          const stok = basis === "admin" ? gudang.stokAdmin : gudang.stokFisikTransit;
-                          const rasio =
-                            gudang.kapasitas > 0 ? stok / gudang.kapasitas : null;
-                          const status = statusFor(stok, gudang.kapasitas);
+                          const nilai = nodeMetricValue(gudang, indikator);
+                          const rasio = nodeRatioValue(gudang, indikator);
                           return (
                             <li
-                              key={gudang.id}
+                              key={gudang.gudang_id ?? gudang.key}
                               className="rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/[0.04]"
                             >
                               <div className="flex items-center justify-between gap-2 text-[11px]">
@@ -936,32 +1435,19 @@ export default function PetaKabupatenPage() {
                                   {gudang.nama}
                                 </span>
                                 <span className="shrink-0 font-display text-[var(--peta-text)] tabular-nums">
-                                  {formatTon(stok)} t
+                                  {formatIndicatorValue(nilai, indikator)}
                                 </span>
                               </div>
                               <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] text-[var(--peta-mute)]">
                                 <span className="truncate">
-                                  {gudang.plant ? `Plant ${gudang.plant}` : "Tanpa kode plant"}
+                                  {gudang.anper?.join("/") || "Tanpa Anper"}
                                 </span>
                                 <span className="shrink-0 tabular-nums">
-                                  {rasio == null ? (
-                                    "tanpa kapasitas"
-                                  ) : (
-                                    <span style={{ color: STATUS_VAR[status] }}>
-                                      {formatPercent(rasio)} dari{" "}
-                                      {formatTon(gudang.kapasitas)} t
-                                    </span>
-                                  )}
+                                  {rasio == null
+                                    ? "tanpa kapasitas"
+                                    : `${formatPercent(rasio)} dari ${formatTon(gudang.kapasitas)} t`}
                                 </span>
                               </div>
-                              {gudang.transitTransfer > 0 && (
-                                <div className="mt-0.5 text-[10px] leading-relaxed text-[var(--peta-mute)]">
-                                  <span className="tabular-nums">
-                                    ± {formatTon(gudang.transitTransfer)} t
-                                  </span>{" "}
-                                  transit transfer — barang menuju gudang ini
-                                </div>
-                              )}
                             </li>
                           );
                         })}
@@ -971,14 +1457,11 @@ export default function PetaKabupatenPage() {
                           </li>
                         )}
                       </ul>
-                      <p className="mt-2 text-[10px] leading-relaxed text-[var(--peta-mute)]">
-                        Warna peta memakai stok admin. Kapasitas gudang multi-plant dijumlahkan.
-                      </p>
                     </div>
-                  </>
+                  </div>
                 ) : (
                   <p className="mt-4 rounded-md border border-[var(--peta-border)] bg-white/[0.02] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--peta-mute)]">
-                    Belum ada data gudang untuk wilayah ini.
+                    Belum ada data gudang untuk wilayah ini pada filter aktif.
                   </p>
                 )}
               </aside>
@@ -986,6 +1469,27 @@ export default function PetaKabupatenPage() {
           )}
         </div>
       </div>
+
+      <DashboardConfigPanel
+        open={configOpen}
+        config={config}
+        produkTersedia={options.produk}
+        anperTersedia={options.anper}
+        provinsiTersedia={options.provinsi}
+        kabupatenTersedia={options.kabupaten}
+        savedPresets={savedPresets}
+        onClose={() => setConfigOpen(false)}
+        onChange={updateConfig}
+        onReset={resetDashboard}
+        onApplyPatch={patchConfig}
+        onApplySaved={(preset) => {
+          setConfig(normalizeConfig(preset.config));
+          setConfigOpen(false);
+          setSelectedKey(null);
+        }}
+        onSavePreset={(name) => setSavedPresets(saveNamedPreset(name, config))}
+        onDeletePreset={(id) => setSavedPresets(deleteNamedPreset(id))}
+      />
     </div>
   );
 }

@@ -1,0 +1,45 @@
+{
+  "tanggal": "2026-11-06",
+  "catatan": "Rekonsiliasi laporan keterisian 6 November 2026. Nasional 65,5%; Sumatera Selatan 87,23%. Angka ton-only: pupuk cair (liter) tidak ikut dijumlahkan.",
+  "nasional": {
+    "gudang_scope": 501,
+    "kapasitas": 1792165.46,
+    "stok_fisik": 1236405.29,
+    "intransit": 0.0,
+    "total_stok": 1236405.29,
+    "outstanding_so": 62599.3,
+    "stok_admin": 1173805.99,
+    "sisa_ruang": 618359.47,
+    "keterisian_fisik": 0.689895,
+    "keterisian_total": 0.689895,
+    "keterisian_admin": 0.654965
+  },
+  "sumatera_selatan": {
+    "gudang_scope": 8,
+    "kapasitas": 23350.0,
+    "stok_fisik": 23249.55,
+    "intransit": 0.0,
+    "total_stok": 23249.55,
+    "outstanding_so": 2881.0,
+    "stok_admin": 20368.55,
+    "sisa_ruang": 2981.45,
+    "keterisian_fisik": 0.995698,
+    "keterisian_total": 0.995698,
+    "keterisian_admin": 0.872315
+  },
+  "kabupaten": {
+    "nama": "Kab. Ogan Komering Ulu Timur",
+    "provinsi": "SUMATERA SELATAN",
+    "gudang_scope": 2,
+    "kapasitas": 6800.0,
+    "stok_fisik": 9633.04,
+    "intransit": 0.0,
+    "total_stok": 9633.04,
+    "outstanding_so": 906.0,
+    "stok_admin": 8727.04,
+    "sisa_ruang": -1927.04,
+    "keterisian_fisik": 1.416624,
+    "keterisian_total": 1.416624,
+    "keterisian_admin": 1.283388
+  }
+}

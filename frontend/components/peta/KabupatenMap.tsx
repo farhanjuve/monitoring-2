@@ -11,18 +11,19 @@ import { Tooltip } from "react-tooltip";
 import "react-tooltip/dist/react-tooltip.css";
 import {
   type GeoCollection,
-  type KabView,
-  STATUS_LABEL,
   displayKabupaten,
   featureKey,
-  formatPercent,
-  formatTon,
   titleCaseName,
 } from "@/lib/kabupaten";
+import {
+  type PetaMapView,
+  formatPercentOrNA,
+  formatTonOrNA,
+} from "@/lib/peta-aggregate";
 
 interface KabupatenMapProps {
   geo: GeoCollection | null;
-  views: Map<string, KabView>;
+  views: Map<string, PetaMapView>;
   selectedKey: string | null;
   onSelect: (key: string | null) => void;
   center: [number, number];
@@ -90,21 +91,24 @@ export function KabupatenMap({
   const tooltipById = useMemo(() => {
     const map = new Map<string, string>();
     views.forEach((view, key) => {
-      const hasCapacity = view.kapasitas > 0;
-      const sisa = view.kapasitas - view.stokAdmin;
+      const node = view.node;
       const rows = [
-        `<b>${escapeHtml(displayKabupaten(view.kabupaten))}</b>`,
-        `<span class="peta-tip-prov">${escapeHtml(titleCaseName(view.provinsi))}</span>`,
-        `<span class="peta-tip-row"><span>Stok admin</span><b>${formatTon(view.stokAdmin)} ton</b></span>`,
-        `<span class="peta-tip-row"><span>Kapasitas</span><b>${hasCapacity ? `${formatTon(view.kapasitas)} ton` : "Belum ada data"}</b></span>`,
+        `<b>${escapeHtml(displayKabupaten(node.kota ?? node.nama))}</b>`,
+        `<span class="peta-tip-prov">${escapeHtml(titleCaseName(node.provinsi))}</span>`,
+        `<span class="peta-tip-row"><span>${escapeHtml(view.metricLabel)}</span><b>${escapeHtml(view.metricText)}</b></span>`,
+        `<span class="peta-tip-row"><span>Stok fisik</span><b>${formatTonOrNA(node.stok_fisik)} ton</b></span>`,
+        `<span class="peta-tip-row"><span>Stok admin</span><b>${formatTonOrNA(node.stok_admin)} ton</b></span>`,
+        `<span class="peta-tip-row"><span>Outstanding SO</span><b>${formatTonOrNA(node.outstanding_so)} ton</b></span>`,
+        `<span class="peta-tip-row"><span>Kapasitas</span><b>${node.kapasitas > 0 ? `${formatTonOrNA(node.kapasitas)} ton` : "Belum ada data"}</b></span>`,
+        `<span class="peta-tip-row"><span>Sisa ruang admin</span><b>${formatTonOrNA(node.sisa_ruang)} ton</b></span>`,
+        `<span class="peta-tip-row"><span>Keterisian admin</span><b>${formatPercentOrNA(node.keterisian_admin)}</b></span>`,
       ];
-      if (hasCapacity) {
+      if ((node.anper?.length ?? 0) > 0) {
         rows.push(
-          `<span class="peta-tip-row"><span>${sisa >= 0 ? "Sisa ruang" : "Kelebihan"}</span><b>${formatTon(Math.abs(sisa))} ton</b></span>`,
-          `<span class="peta-tip-row"><span>Utilisasi</span><b>${formatPercent(view.ratio)}</b></span>`,
+          `<span class="peta-tip-row"><span>Anper</span><b>${escapeHtml(node.anper!.join(", "))}</b></span>`,
         );
       }
-      rows.push(`<span class="peta-tip-status">${STATUS_LABEL[view.status]}</span>`);
+      rows.push(`<span class="peta-tip-status">${escapeHtml(view.statusLabel)}</span>`);
       map.set(key, rows.join(""));
     });
     return map;
@@ -125,7 +129,7 @@ export function KabupatenMap({
           projection="geoMercator"
           projectionConfig={{ scale, center: [118, -2.4] }}
           className="peta-svg"
-          aria-label="Peta utilisasi kapasitas gudang per kabupaten/kota"
+          aria-label="Peta indikator kapasitas gudang per kabupaten/kota"
         >
           <ZoomableGroup
             center={center}
@@ -136,92 +140,90 @@ export function KabupatenMap({
               onMoveEnd(coordinates as [number, number], nextZoom);
             }}
           >
-          {geo && (
-            <Geographies geography={geo as never}>
-              {({ geographies }) =>
-                geographies.map((feature) => {
-                  const key = featureKey(feature);
-                  const view = views.get(key);
-                  const status = view?.status ?? "none";
-                  const isSelected = key === selectedKey;
-                  const label = view
-                    ? `${displayKabupaten(view.kabupaten)}, ${titleCaseName(view.provinsi)} — ${STATUS_LABEL[view.status]}${
-                        view.ratio == null
-                          ? ""
-                          : `, ${formatPercent(view.ratio)} kapasitas terpakai`
-                      }`
-                    : `${feature.properties.WADMKK ?? "Kabupaten"} — belum ada data`;
+            {geo && (
+              <Geographies geography={geo as never}>
+                {({ geographies }) =>
+                  geographies.map((feature) => {
+                    const key = featureKey(feature);
+                    const view = views.get(key);
+                    const status = view?.status ?? "none";
+                    const isSelected = key === selectedKey;
+                    const label = view
+                      ? `${displayKabupaten(view.node.kota ?? view.node.nama)}, ${titleCaseName(view.node.provinsi)} — ${view.statusLabel}, ${view.metricLabel} ${view.metricText}`
+                      : `${feature.properties.WADMKK ?? "Kabupaten"} — belum ada data`;
 
-                  return (
-                    <Geography
-                      key={feature.rsmKey}
-                      geography={feature}
-                      tabIndex={-1}
-                      role="img"
-                      aria-label={label}
-                      onClick={() => onSelect(isSelected ? null : key)}
-                      className="peta-geo"
-                      style={{
-                        default: {
-                          fill: STATUS_FILL[status],
-                          outline: "none",
-                          stroke: isSelected ? "var(--peta-accent)" : "var(--peta-stroke)",
-                          strokeWidth: isSelected ? 1.6 : 0.35,
-                        },
-                        hover: {
-                          fill: STATUS_FILL[status],
-                          outline: "none",
-                          stroke: "var(--peta-accent)",
-                          strokeWidth: isSelected ? 1.6 : 1,
-                        },
-                        pressed: {
-                          fill: STATUS_FILL[status],
-                          outline: "none",
-                        },
-                      }}
-                      data-tooltip-id="peta-kab-tooltip"
-                      data-tooltip-html={
-                        tooltipById.get(key) ??
-                        `<b>${escapeHtml(feature.properties.WADMKK ?? "Kabupaten")}</b><span class="peta-tip-status">Belum ada data gudang</span>`
-                      }
-                    />
-                  );
-                })
+                    return (
+                      <Geography
+                        key={feature.rsmKey}
+                        geography={feature}
+                        tabIndex={-1}
+                        role="img"
+                        aria-label={label}
+                        onClick={() => onSelect(isSelected ? null : key)}
+                        className="peta-geo"
+                        style={{
+                          default: {
+                            fill: STATUS_FILL[status],
+                            outline: "none",
+                            stroke: isSelected
+                              ? "var(--peta-accent)"
+                              : "var(--peta-stroke)",
+                            strokeWidth: isSelected ? 1.6 : 0.35,
+                          },
+                          hover: {
+                            fill: STATUS_FILL[status],
+                            outline: "none",
+                            stroke: "var(--peta-accent)",
+                            strokeWidth: isSelected ? 1.6 : 1,
+                          },
+                          pressed: {
+                            fill: STATUS_FILL[status],
+                            outline: "none",
+                          },
+                        }}
+                        data-tooltip-id="peta-kab-tooltip"
+                        data-tooltip-html={
+                          tooltipById.get(key) ??
+                          `<b>${escapeHtml(feature.properties.WADMKK ?? "Kabupaten")}</b><span class="peta-tip-status">Belum ada data gudang</span>`
+                        }
+                      />
+                    );
+                  })
+                }
+              </Geographies>
+            )}
+
+            <Geographies geography="/indonesia-38-provinces.geojson">
+              {({ geographies }) =>
+                geographies.map((feature) => (
+                  <Geography
+                    key={`prov-${feature.rsmKey}`}
+                    geography={feature}
+                    style={{
+                      default: {
+                        fill: "transparent",
+                        stroke: "rgba(148, 163, 184, 0.35)",
+                        strokeWidth: 0.7,
+                        outline: "none",
+                        pointerEvents: "none",
+                      },
+                      hover: {
+                        fill: "transparent",
+                        stroke: "rgba(148, 163, 184, 0.35)",
+                        strokeWidth: 0.7,
+                        outline: "none",
+                        pointerEvents: "none",
+                      },
+                      pressed: {
+                        fill: "transparent",
+                        outline: "none",
+                        pointerEvents: "none",
+                      },
+                    }}
+                  />
+                ))
               }
             </Geographies>
-          )}
-
-          <Geographies geography="/indonesia-38-provinces.geojson">
-            {({ geographies }) =>
-              geographies.map((feature) => (
-                <Geography
-                  key={`prov-${feature.rsmKey}`}
-                  geography={feature}
-                  style={{
-                    default: {
-                      fill: "transparent",
-                      stroke: "rgba(148, 163, 184, 0.35)",
-                      strokeWidth: 0.7,
-                      outline: "none",
-                      pointerEvents: "none",
-                    },
-                    hover: {
-                      fill: "transparent",
-                      stroke: "rgba(148, 163, 184, 0.35)",
-                      strokeWidth: 0.7,
-                      outline: "none",
-                      pointerEvents: "none",
-                    },
-                    pressed: {
-                      fill: "transparent",
-                      outline: "none",
-                      pointerEvents: "none",
-                    },
-                  }}
-                />
-              ))
-            }
-          </Geographies>
           </ZoomableGroup>
         </ComposableMap>
       )}

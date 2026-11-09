@@ -27,8 +27,34 @@ class WarehousePlant(Base):
     id = Column(Integer, primary_key=True, index=True)
     gudang_id = Column(Integer, ForeignKey("warehouses.id", ondelete="CASCADE"), index=True, nullable=False)
     kode_plant = Column(String(10), unique=True, index=True, nullable=False)
-    
+
     warehouse = relationship("Warehouse", backref="plants")
+
+class WarehouseAnper(Base):
+    """Anper (alokasi barang per jenis layanan) yang dilayani satu gudang.
+
+    Satu gudang bisa melayani beberapa Anper (mis. PIM dan PKT). Kapasitas
+    Anper disimpan terpisah dari `plant_capacity` karena CSV sumber
+    mengalokasikan kapasitas per Anper, sedangkan keterisian resmi memakai
+    kapasitas fisik gudang (lihat `peta_aggregate`).
+    """
+
+    __tablename__ = "warehouse_anper"
+    __table_args__ = (
+        UniqueConstraint("gudang_id", "anper", name="uq_warehouse_anper"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    gudang_id = Column(
+        Integer,
+        ForeignKey("warehouses.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    anper = Column(String(10), index=True, nullable=False)
+    kapasitas_ton = Column(Float, nullable=True)
+
+    warehouse = relationship("Warehouse", backref="anper_allocations")
 
 
 class PlantCapacity(Base):
@@ -121,6 +147,9 @@ class SAPOutstandingDO(Base):
     tanggal = Column(Date, index=True, nullable=False)
     kode_plant = Column(String(10), index=True, nullable=False)
     jenis_pupuk = Column(String(20), nullable=False)
+    # Nomor material SAP. Null pada data lama yang diunggah sebelum kolom ini
+    # ada; filter produk/subsidi untuk SO memerlukan kolom ini.
+    material_code = Column(String(20), nullable=True)
     nomor_so = Column(String(30), nullable=True)
     outstanding_qty = Column(Float, default=0.0)
     status_so = Column(String(50), nullable=True)

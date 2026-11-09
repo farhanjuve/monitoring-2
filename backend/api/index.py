@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 import os
-from app.api.routes import auth, stocks, master_data, photos, slides, indigo, safety_stock
+from app.api.routes import auth, stocks, master_data, photos, slides, indigo, safety_stock, peta
 from app.core.database import engine
 
 app = FastAPI(title="Pupuk Monitor API")
@@ -58,6 +58,7 @@ app.include_router(photos.router, prefix="/api/photos", tags=["Photos"])
 app.include_router(slides.router, prefix="/api/slides", tags=["Slides"])
 app.include_router(indigo.router, prefix="/api/indigo", tags=["INDIGO"])
 app.include_router(safety_stock.router, prefix="/api/safety-stock", tags=["Safety Stock"])
+app.include_router(peta.router, prefix="/api/peta", tags=["Peta Kabupaten"])
 
 mock_storage_path = os.path.join(os.getcwd(), "storage", "mock-storage")
 os.makedirs(mock_storage_path, exist_ok=True)
