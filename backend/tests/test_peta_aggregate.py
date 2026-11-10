@@ -104,6 +104,42 @@ class KapasitasTest(unittest.TestCase):
         self.assertIsNone(kpi["sisa_ruang"])
         self.assertEqual(kpi["status"], "na")
 
+    def test_produk_gudang_mengikuti_filter_dan_satuan_ton(self):
+        data = aggregate_peta(
+            [
+                gudang(
+                    1,
+                    stock=[
+                        baris("Urea", 30),
+                        baris("NPK", 20),
+                        baris("Organik Cair", 999, satuan="L"),
+                    ],
+                )
+            ],
+            [],
+            FilterPeta(produk=frozenset({"Urea"})),
+        )
+        node = data["levels"]["gudang"][0]
+        self.assertEqual(node["produk"], ["Urea"])
+
+    def test_produk_gudang_tanpa_filter_terurut_dan_tanpa_liter(self):
+        data = aggregate_peta(
+            [
+                gudang(
+                    1,
+                    stock=[
+                        baris("Urea", 30),
+                        baris("NPK", 20),
+                        baris("Organik Cair", 999, satuan="L"),
+                    ],
+                )
+            ],
+            [],
+            FilterPeta(),
+        )
+        node = data["levels"]["gudang"][0]
+        self.assertEqual(node["produk"], ["NPK", "Urea"])
+
 
 class FilterTest(unittest.TestCase):
     def setUp(self):

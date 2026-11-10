@@ -1,7 +1,7 @@
 """
 SAP File Parser Service
 Parser disesuaikan dengan format file nyata yang diterima dari SAP:
-  - MB52: kolom 'Plant', 'Material Description', 'Unrestricted', 'Stock in Transit', dst.
+  - MB52: kolom 'Plant', 'Material Description', 'Unrestricted', 'Transit and Transfer', dst.
   - ZSD_SODO: kolom 'Kode Gudang', 'Deskripsi Material', 'Outstanding SO', 'Status SO', dst.
 """
 
@@ -151,7 +151,7 @@ def parse_mb52(
       - Material Description   → material_desc, cadangan bila kode belum terdaftar
       - Storage Location       → storage_location
       - Unrestricted           → stok fisik (unrestricted)
-      - Stock in Transit       → intransit (opsional)
+      - Transit and Transfer   → intransit (opsional)
       - Base Unit of Measure   → satuan; dibandingkan dengan master material
 
     `warning_sink` (opsional) akan diisi pesan bila satuan di file berbeda dari
@@ -163,6 +163,10 @@ def parse_mb52(
     _validate_columns(actual_cols, MB52_REQUIRED_COLUMNS, MB52_EXPECTED_MIN_COLUMNS, "MB52")
 
     peringatan: List[str] = []
+    if "Transit and Transfer" not in actual_cols:
+        peringatan.append(
+            "Kolom 'Transit and Transfer' tidak ditemukan; intransit dianggap 0."
+        )
     satuan_tak_dikenal = set()
     diabaikan = {}
     diabaikan_satuan = 0
@@ -204,21 +208,18 @@ def parse_mb52(
         except (ValueError, TypeError):
             unrestricted = 0.0
 
-        # Stock in Transit (opsional)
-        intransit_raw = row.get("Stock in Transit", 0)
+        # Intransit = kolom "Transit and Transfer" dari MB52. File SAP yang
+        # dipakai tidak memiliki kolom "Stock in Transit", jadi kolom itulah
+        # satu-satunya sumber barang dalam perjalanan.
+        intransit_raw = row.get("Transit and Transfer", 0)
         try:
             intransit = float(intransit_raw) if pd.notna(intransit_raw) else 0.0
         except (ValueError, TypeError):
             intransit = 0.0
 
-        # Transit and Transfer (opsional) - dipakai peta keterisian gudang
-        transit_transfer_raw = row.get("Transit and Transfer", 0)
-        try:
-            transit_transfer = (
-                float(transit_transfer_raw) if pd.notna(transit_transfer_raw) else 0.0
-            )
-        except (ValueError, TypeError):
-            transit_transfer = 0.0
+        # Alias lama untuk kolom yang sama. Dipertahankan agar data/kolom DB
+        # lama tetap valid, tetapi nilainya selalu sama dengan intransit.
+        transit_transfer = intransit
 
         # Satuan file menentukan konversi. KG wajib dibagi 1.000 agar tidak
         # tercatat sebagai ton (1.000 KG tidak boleh menjadi 1.000 ton).

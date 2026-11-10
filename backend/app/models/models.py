@@ -135,8 +135,8 @@ class SAPStock(Base):
     storage_location = Column(String(10), nullable=True)
     unrestricted = Column(Float, default=0.0)
     intransit = Column(Float, default=0.0)
-    # Kolom "Transit and Transfer" dari MB52. Disimpan terpisah karena hanya
-    # dipakai peta keterisian gudang, bukan metrik intransit di dashboard.
+    # Alias lama untuk kolom "Transit and Transfer" yang sekarang menjadi
+    # intransit. Nilainya selalu sama dengan intransit.
     transit_transfer = Column(Float, default=0.0)
 
 class SAPOutstandingDO(Base):

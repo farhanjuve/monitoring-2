@@ -51,7 +51,7 @@ class StockCalculationOut(BaseModel):
     stok_admin_tanpa_intransit: float
     intransit: float
     stok_admin: float
-    # "Transit and Transfer" dari MB52. Hanya dipakai peta keterisian gudang.
+    # Alias lama "Transit and Transfer"; kini sama dengan intransit.
     transit_transfer: float = 0.0
     calculated_at: Optional[datetime] = None
 

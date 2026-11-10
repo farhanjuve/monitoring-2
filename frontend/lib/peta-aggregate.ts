@@ -24,6 +24,8 @@ export interface PetaNode {
   gudang_count: number;
   plants?: string[];
   anper?: string[];
+  /** Kategori produk yang ada di node setelah filter aktif. */
+  produk?: string[];
   kapasitas: number;
   stok_fisik: number;
   intransit: number;

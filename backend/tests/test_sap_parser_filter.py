@@ -32,7 +32,6 @@ def baris(plant, material, deskripsi, nilai, satuan="TON", transit_transfer=0.0)
         "Unrestricted": nilai,
         "Base Unit of Measure": satuan,
         "Storage Location": "0001",
-        "Stock in Transit": 0,
         "Transit and Transfer": transit_transfer,
     }
 
@@ -69,9 +68,10 @@ class FilterMaterialTest(unittest.TestCase):
         self.assertNotIn("Listrik", deskripsi)
         self.assertNotIn("PUPUK MIKRO; NUTREMAG", deskripsi)
 
-    def test_transit_transfer_ikut_terbaca(self):
+    def test_transit_transfer_menjadi_intransit(self):
         diterima = [row for row in self.rows if row["material_code"] == "1000036"]
         self.assertEqual(len(diterima), 1)
+        self.assertAlmostEqual(diterima[0]["intransit"], 12.5)
         self.assertAlmostEqual(diterima[0]["transit_transfer"], 12.5)
 
     def test_nilai_hanya_dari_baris_yang_lolos(self):
@@ -143,6 +143,26 @@ class KolomMaterialWajibTest(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             parse_mb52(buat_mb52(tanpa_material), date(2026, 11, 5))
         self.assertIn("Material", str(ctx.exception))
+
+    def test_file_tanpa_transit_memberi_peringatan(self):
+        tanpa_transit = [
+            {
+                "Plant": "B001",
+                "Material": "1000036",
+                "Material Description": "Urea SUB @50 KG",
+                "Unrestricted": 10.0,
+                "Base Unit of Measure": "TON",
+                "Storage Location": "0001",
+            }
+        ]
+        peringatan = []
+        rows = parse_mb52(
+            buat_mb52(tanpa_transit),
+            date(2026, 11, 5),
+            warning_sink=peringatan,
+        )
+        self.assertEqual(rows[0]["intransit"], 0.0)
+        self.assertIn("Transit and Transfer", " ".join(peringatan))
 
 
 if __name__ == "__main__":

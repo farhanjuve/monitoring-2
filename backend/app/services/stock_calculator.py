@@ -64,7 +64,7 @@ def calculate_daily_stock(db: Session, tanggal: date, gudang_id: int, jenis_pupu
     ).scalar()
     outstanding_so = float(outstanding_so)
 
-    # Intransit = Stock in Transit dari MB52
+    # Intransit = kolom "Transit and Transfer" dari MB52.
     intransit = db.query(func.coalesce(func.sum(SAPStock.intransit), 0.0)).join(
         WarehousePlant, WarehousePlant.kode_plant == SAPStock.kode_plant
     ).filter(

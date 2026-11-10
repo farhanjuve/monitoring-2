@@ -212,6 +212,15 @@ def _aggregate(
     intransit = sum(line.intransit for line in selected)
     transit = sum(line.transit_transfer for line in selected)
     total = fisik + intransit
+    # Produk yang benar-benar ada di node ini setelah filter aktif. Dipakai
+    # drawer gudang agar user tahu isi gudang tanpa menebak dari nama gudang.
+    produk = sorted(
+        {
+            line.kategori
+            for line in selected
+            if line.kategori and line.kategori != KATEGORI_LAIN
+        }
+    )
 
     so_total = 0.0
     so_lengkap = True
@@ -293,6 +302,7 @@ def _aggregate(
         "keterisian_admin": None if rasio_admin is None else round(rasio_admin, 6),
         "indikator": indikator,
         "nilai_indikator": None if nilai_indikator is None else round(nilai_indikator, 6),
+        "produk": produk,
         "status": status,
         "status_indikator": status_indikator,
         "has_data": bool(selected),

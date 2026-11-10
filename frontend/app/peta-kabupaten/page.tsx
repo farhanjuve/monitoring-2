@@ -1392,16 +1392,6 @@ export default function PetaKabupatenPage() {
                       </div>
                     )}
 
-                    {selectedNode.transit_transfer > 0 && (
-                      <p className="mt-2 text-[10px] leading-relaxed text-[var(--peta-mute)]">
-                        Sekitar{" "}
-                        <b className="tabular-nums text-[var(--peta-dim)]">
-                          {formatTon(selectedNode.transit_transfer)} ton
-                        </b>{" "}
-                        berstatus transit transfer — barang menuju gudang ini.
-                      </p>
-                    )}
-
                     {selectedNode.kapasitas <= 0 && (
                       <p className="mt-2 rounded-md border border-[var(--peta-border)] bg-white/[0.02] px-2.5 py-2 text-[10px] leading-relaxed text-[var(--peta-mute)]">
                         Kapasitas gudang di wilayah ini belum ada di master, jadi rasio tidak
@@ -1420,32 +1410,57 @@ export default function PetaKabupatenPage() {
                       </div>
                       <ul className="mt-2 space-y-0.5">
                         {gudangList.map((gudang) => {
-                          const nilai = nodeMetricValue(gudang, indikator);
                           const rasio = nodeRatioValue(gudang, indikator);
+                          const kode = gudang.plants?.join(" · ") || "—";
+                          const produk = gudang.produk?.join(", ") || "—";
+                          const labelRasio = isRatioIndikator(indikator)
+                            ? indikatorLabel
+                            : "Keterisian admin";
                           return (
                             <li
                               key={gudang.gudang_id ?? gudang.key}
-                              className="rounded-md px-1.5 py-1.5 transition-colors hover:bg-white/[0.04]"
+                              className="rounded-md px-1.5 py-2 transition-colors hover:bg-white/[0.04]"
                             >
-                              <div className="flex items-center justify-between gap-2 text-[11px]">
+                              <div className="flex items-baseline justify-between gap-2 text-[11px]">
                                 <span
                                   className="min-w-0 truncate text-[var(--peta-dim)]"
                                   title={gudang.nama}
                                 >
                                   {gudang.nama}
                                 </span>
-                                <span className="shrink-0 font-display text-[var(--peta-text)] tabular-nums">
-                                  {formatIndicatorValue(nilai, indikator)}
+                                <span
+                                  className="shrink-0 font-display text-[var(--peta-text)] tabular-nums"
+                                  title="Stok fisik"
+                                >
+                                  {formatTonOrNA(gudang.stok_fisik)} t
                                 </span>
                               </div>
-                              <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] text-[var(--peta-mute)]">
+                              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-[var(--peta-mute)]">
+                                <span>Stok fisik</span>
+                                <span aria-hidden="true">·</span>
+                                <span
+                                  className="min-w-0 truncate"
+                                  title={`Kode plant: ${kode}`}
+                                >
+                                  Kode {kode}
+                                </span>
+                                <span aria-hidden="true">·</span>
                                 <span className="truncate">
                                   {gudang.anper?.join("/") || "Tanpa Anper"}
                                 </span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-[10px] text-[var(--peta-mute)]">
+                                <span
+                                  className="min-w-0 truncate"
+                                  title={`Produk: ${produk}`}
+                                >
+                                  Produk: {produk}
+                                </span>
                                 <span className="shrink-0 tabular-nums">
+                                  Kapasitas {formatTonOrNA(gudang.kapasitas)} t ·{" "}
                                   {rasio == null
-                                    ? "tanpa kapasitas"
-                                    : `${formatPercent(rasio)} dari ${formatTon(gudang.kapasitas)} t`}
+                                    ? "rasio N/A"
+                                    : `${labelRasio} ${formatPercentOrNA(rasio)}`}
                                 </span>
                               </div>
                             </li>
