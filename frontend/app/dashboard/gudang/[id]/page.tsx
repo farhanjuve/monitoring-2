@@ -16,7 +16,6 @@ import {
 import Link from "next/link";
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ReferenceLine,
@@ -89,6 +88,14 @@ interface HistoryResponse {
   points: HistoryPoint[];
 }
 
+type SeriesKey = "admin" | "fisik" | "total";
+
+const SERIES: Array<{ key: SeriesKey; label: string; warna: string }> = [
+  { key: "admin", label: "Admin", warna: "#001f3f" },
+  { key: "fisik", label: "Fisik", warna: "#007bff" },
+  { key: "total", label: "Total", warna: "#f59e0b" },
+];
+
 export default function GudangDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -106,6 +113,11 @@ export default function GudangDetailPage() {
   const [history, setHistory] = useState<HistoryResponse | null>(null);
   const [historyDays, setHistoryDays] = useState(90);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [visibleSeries, setVisibleSeries] = useState<Record<SeriesKey, boolean>>({
+    admin: true,
+    fisik: true,
+    total: true,
+  });
   const [loading, setLoading] = useState(true);
   const [dateLoading, setDateLoading] = useState(false);
 
@@ -269,6 +281,14 @@ export default function GudangDetailPage() {
     for (let value = bawah; value <= atas; value += 20) ticks.push(value);
     return { bawah, atas, ticks };
   }, [historyData]);
+
+  const toggleSeries = (key: SeriesKey) => {
+    setVisibleSeries((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const visibleSeriesCount = SERIES.filter(
+    (series) => visibleSeries[series.key]
+  ).length;
 
   const updateSelectedDate = (value: string) => {
     setSelectedDate(value);
@@ -537,11 +557,47 @@ export default function GudangDetailPage() {
           </div>
         </div>
 
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {SERIES.map((series) => {
+            const aktif = visibleSeries[series.key];
+            return (
+              <button
+                key={series.key}
+                type="button"
+                aria-pressed={aktif}
+                onClick={() => toggleSeries(series.key)}
+                title={
+                  aktif
+                    ? `Sembunyikan garis ${series.label}`
+                    : `Tampilkan garis ${series.label}`
+                }
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                  aktif
+                    ? "border-gray-300 bg-white text-gray-700 shadow-sm"
+                    : "border-gray-200 bg-gray-50 text-gray-400"
+                }`}
+              >
+                <span
+                  className="h-2 w-2 rounded-full transition-colors"
+                  style={{
+                    backgroundColor: aktif ? series.warna : "#cbd5e1",
+                  }}
+                />
+                <span className={aktif ? "" : "line-through"}>{series.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {historyLoading ? (
           <div className="mt-4 h-72 animate-pulse rounded-lg bg-gray-100" />
         ) : historyData.length === 0 ? (
           <p className="py-16 text-center text-sm text-gray-400">
             Belum ada riwayat stok untuk gudang ini pada rentang tanggal tersebut.
+          </p>
+        ) : visibleSeriesCount === 0 ? (
+          <p className="py-16 text-center text-sm text-gray-400">
+            Pilih minimal satu garis untuk ditampilkan.
           </p>
         ) : (
           <div className="mt-4 h-72">
@@ -568,7 +624,6 @@ export default function GudangDetailPage() {
                         })}%`
                   }
                 />
-                <Legend />
                 <ReferenceLine
                   y={100}
                   stroke="#ef4444"
@@ -580,33 +635,39 @@ export default function GudangDetailPage() {
                     fill: "#ef4444",
                   }}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="adminPct"
-                  name="Admin"
-                  stroke="#001f3f"
-                  strokeWidth={2.5}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="fisikPct"
-                  name="Fisik"
-                  stroke="#007bff"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="totalPct"
-                  name="Total"
-                  stroke="#f59e0b"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
+                {visibleSeries.admin && (
+                  <Line
+                    type="monotone"
+                    dataKey="adminPct"
+                    name="Admin"
+                    stroke="#001f3f"
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                )}
+                {visibleSeries.fisik && (
+                  <Line
+                    type="monotone"
+                    dataKey="fisikPct"
+                    name="Fisik"
+                    stroke="#007bff"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                )}
+                {visibleSeries.total && (
+                  <Line
+                    type="monotone"
+                    dataKey="totalPct"
+                    name="Total"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
