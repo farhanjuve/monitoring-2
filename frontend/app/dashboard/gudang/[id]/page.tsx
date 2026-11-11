@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 import { formatJakartaDateTime, todayJakarta } from "@/lib/time";
@@ -14,6 +14,17 @@ import {
   RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   UploadCompletenessBanner,
   type UploadCompletenessStatus,
@@ -58,6 +69,26 @@ interface RecommendationItem {
   provinsi: string;
 }
 
+interface HistoryPoint {
+  tanggal: string;
+  stok_fisik: number;
+  intransit: number;
+  total_stok: number;
+  outstanding_so: number;
+  stok_admin: number;
+  keterisian_fisik: number | null;
+  keterisian_total: number | null;
+  keterisian_admin: number | null;
+}
+
+interface HistoryResponse {
+  gudang_id: number;
+  nama_gudang: string;
+  kapasitas: number;
+  tanggal_akhir: string | null;
+  points: HistoryPoint[];
+}
+
 export default function GudangDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -72,6 +103,9 @@ export default function GudangDetailPage() {
   const [uploadStatus, setUploadStatus] = useState<UploadCompletenessStatus | null>(null);
   const [latestDateStr, setLatestDateStr] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState("");
+  const [history, setHistory] = useState<HistoryResponse | null>(null);
+  const [historyDays, setHistoryDays] = useState(90);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dateLoading, setDateLoading] = useState(false);
 
@@ -156,6 +190,59 @@ export default function GudangDetailPage() {
 
     loadDateData();
   }, [id, selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!id || !selectedDate) return;
+    let cancelled = false;
+
+    setHistoryLoading(true);
+    fetch(
+      `${API_BASE_URL}/api/stocks/history?gudang_id=${id}&tanggal_akhir=${selectedDate}&hari=${historyDays}`
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: HistoryResponse | null) => {
+        if (!cancelled) setHistory(data);
+      })
+      .catch(() => {
+        if (!cancelled) setHistory(null);
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, selectedDate, historyDays]);
+
+  const historyData = useMemo(() => {
+    const chartDate = (iso: string) =>
+      new Date(`${iso}T00:00:00`).toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "short",
+      });
+
+    return (history?.points ?? []).map((point) => ({
+      tanggal: point.tanggal,
+      label: chartDate(point.tanggal),
+      adminPct:
+        point.keterisian_admin == null ? null : point.keterisian_admin * 100,
+      fisikPct:
+        point.keterisian_fisik == null ? null : point.keterisian_fisik * 100,
+      totalPct:
+        point.keterisian_total == null ? null : point.keterisian_total * 100,
+    }));
+  }, [history]);
+
+  const historyYMax = useMemo(() => {
+    if (historyData.length === 0) return 100;
+    const tertinggi = Math.max(
+      ...historyData.map((point) =>
+        Math.max(point.adminPct ?? 0, point.fisikPct ?? 0, point.totalPct ?? 0)
+      )
+    );
+    return Math.max(100, Math.ceil(tertinggi / 10) * 10);
+  }, [historyData]);
 
   const updateSelectedDate = (value: string) => {
     setSelectedDate(value);
@@ -395,6 +482,114 @@ export default function GudangDetailPage() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-800">Tren Keterisian Gudang</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              {historyDays} hari terakhir sampai {selectedDateLabel}
+              {history ? ` · ${history.points.length} titik data` : ""}
+            </p>
+          </div>
+          <div className="inline-flex self-start rounded-md border border-gray-200 bg-gray-50 p-0.5">
+            {[30, 60, 90].map((jumlahHari) => (
+              <button
+                key={jumlahHari}
+                type="button"
+                onClick={() => setHistoryDays(jumlahHari)}
+                className={`rounded px-3 py-1 text-xs font-semibold transition ${
+                  historyDays === jumlahHari
+                    ? "bg-pupuk-darkBlue text-white shadow-sm"
+                    : "text-gray-600 hover:bg-white"
+                }`}
+              >
+                {jumlahHari} hari
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {historyLoading ? (
+          <div className="mt-4 h-72 animate-pulse rounded-lg bg-gray-100" />
+        ) : historyData.length === 0 ? (
+          <p className="py-16 text-center text-sm text-gray-400">
+            Belum ada riwayat stok untuk gudang ini pada rentang tanggal tersebut.
+          </p>
+        ) : (
+          <div className="mt-4 h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={historyData}
+                margin={{ top: 10, right: 16, left: -8, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={24} />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  domain={[0, historyYMax]}
+                  tickFormatter={(value) => `${value}%`}
+                  width={48}
+                />
+                <RechartsTooltip
+                  formatter={(value) =>
+                    value == null ? "-" : `${Number(value).toFixed(1)}%`
+                  }
+                />
+                <Legend />
+                <ReferenceLine
+                  y={100}
+                  stroke="#ef4444"
+                  strokeDasharray="4 4"
+                  label={{
+                    value: "100%",
+                    position: "insideTopRight",
+                    fontSize: 10,
+                    fill: "#ef4444",
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="adminPct"
+                  name="Admin"
+                  stroke="#001f3f"
+                  strokeWidth={2.5}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                  connectNulls
+                />
+                <Line
+                  type="monotone"
+                  dataKey="fisikPct"
+                  name="Fisik"
+                  stroke="#007bff"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                  connectNulls
+                />
+                <Line
+                  type="monotone"
+                  dataKey="totalPct"
+                  name="Total"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                  connectNulls
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        <p className="mt-3 text-[11px] italic text-gray-400">
+          Rasio memakai kapasitas master saat ini
+          {history && history.kapasitas > 0 ? ` (${fmt(history.kapasitas)} t)` : ""}
+          , karena riwayat perubahan kapasitas belum tersimpan. Tanggal tanpa
+          upload tidak dihitung sebagai nol.
+        </p>
       </div>
 
       <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">

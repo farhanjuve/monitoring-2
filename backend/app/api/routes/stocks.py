@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import case, func
-from datetime import date
+from datetime import date, timedelta
 from typing import List, Optional
 import io
 from openpyxl import Workbook
@@ -252,6 +252,104 @@ def get_stock_dates(db: Session = Depends(get_db)):
         .all()
     )
     return [row[0].isoformat() for row in rows]
+
+
+@router.get("/history")
+def get_stock_history(
+    gudang_id: int,
+    tanggal_akhir: Optional[date] = None,
+    hari: int = 90,
+    db: Session = Depends(get_db),
+):
+    """Riwayat keterisian satu gudang untuk grafik tren.
+
+    Hanya tanggal yang punya hasil kalkulasi yang dikembalikan; tanggal tanpa
+    upload tidak diisi nol karena itu akan terlihat seperti gudang kosong.
+    Kapasitas memakai nilai master saat ini karena riwayat perubahan kapasitas
+    belum disimpan.
+    """
+    if hari < 1 or hari > 365:
+        raise HTTPException(status_code=400, detail="Parameter hari harus 1-365.")
+
+    gudang = (
+        db.query(Warehouse)
+        .options(selectinload(Warehouse.plants))
+        .filter(Warehouse.id == gudang_id)
+        .first()
+    )
+    if not gudang:
+        raise HTTPException(status_code=404, detail="Gudang tidak ditemukan.")
+
+    if not tanggal_akhir:
+        tanggal_akhir = (
+            db.query(func.max(StockCalculation.tanggal))
+            .filter(StockCalculation.gudang_id == gudang_id)
+            .scalar()
+        )
+    if not tanggal_akhir:
+        return {
+            "gudang_id": gudang_id,
+            "nama_gudang": gudang.nama_gudang,
+            "kapasitas": 0.0,
+            "tanggal_akhir": None,
+            "points": [],
+        }
+
+    tanggal_mulai = tanggal_akhir - timedelta(days=hari - 1)
+    rows = (
+        db.query(
+            StockCalculation.tanggal,
+            func.sum(StockCalculation.stok_fisik).label("stok_fisik"),
+            func.sum(StockCalculation.intransit).label("intransit"),
+            func.sum(StockCalculation.outstanding_so).label("outstanding_so"),
+            func.sum(StockCalculation.stok_admin).label("stok_admin"),
+        )
+        .filter(
+            StockCalculation.gudang_id == gudang_id,
+            StockCalculation.tanggal >= tanggal_mulai,
+            StockCalculation.tanggal <= tanggal_akhir,
+        )
+        .group_by(StockCalculation.tanggal)
+        .order_by(StockCalculation.tanggal)
+        .all()
+    )
+
+    kapasitas_map = load_kapasitas(db)
+    kapasitas = sum(
+        kapasitas_map.get(str(plant.kode_plant).strip(), 0.0)
+        for plant in gudang.plants
+        if plant.kode_plant
+    )
+
+    def rasio(nilai: float) -> Optional[float]:
+        return round(nilai / kapasitas, 6) if kapasitas > 0 else None
+
+    points = []
+    for row in rows:
+        fisik = float(row.stok_fisik or 0.0)
+        intransit = float(row.intransit or 0.0)
+        total = fisik + intransit
+        points.append(
+            {
+                "tanggal": row.tanggal.isoformat(),
+                "stok_fisik": round(fisik, 2),
+                "intransit": round(intransit, 2),
+                "total_stok": round(total, 2),
+                "outstanding_so": round(float(row.outstanding_so or 0.0), 2),
+                "stok_admin": round(float(row.stok_admin or 0.0), 2),
+                "keterisian_fisik": rasio(fisik),
+                "keterisian_total": rasio(total),
+                "keterisian_admin": rasio(float(row.stok_admin or 0.0)),
+            }
+        )
+
+    return {
+        "gudang_id": gudang_id,
+        "nama_gudang": gudang.nama_gudang,
+        "kapasitas": round(kapasitas, 2),
+        "tanggal_akhir": tanggal_akhir.isoformat(),
+        "points": points,
+    }
 
 
 @router.get("/coverage")
