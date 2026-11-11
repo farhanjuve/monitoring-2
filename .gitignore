@@ -28,3 +28,6 @@ Thumbs.db
 
 # Runtime logs
 backend/storage/*.log
+
+# Playwright CLI artifacts
+.playwright-cli/

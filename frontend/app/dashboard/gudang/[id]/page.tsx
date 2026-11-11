@@ -216,32 +216,58 @@ export default function GudangDetailPage() {
   }, [id, selectedDate, historyDays]);
 
   const historyData = useMemo(() => {
+    const points = history?.points ?? [];
+    if (points.length === 0) return [];
+
     const chartDate = (iso: string) =>
       new Date(`${iso}T00:00:00`).toLocaleDateString("id-ID", {
         day: "2-digit",
         month: "short",
       });
+    const isoDate = (value: Date) =>
+      `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(
+        value.getDate()
+      ).padStart(2, "0")}`;
 
-    return (history?.points ?? []).map((point) => ({
-      tanggal: point.tanggal,
-      label: chartDate(point.tanggal),
-      adminPct:
-        point.keterisian_admin == null ? null : point.keterisian_admin * 100,
-      fisikPct:
-        point.keterisian_fisik == null ? null : point.keterisian_fisik * 100,
-      totalPct:
-        point.keterisian_total == null ? null : point.keterisian_total * 100,
-    }));
+    const byDate = new Map(points.map((point) => [point.tanggal, point]));
+    const data = [];
+    const cursor = new Date(`${points[0].tanggal}T00:00:00`);
+    const akhir = new Date(`${points[points.length - 1].tanggal}T00:00:00`);
+
+    while (cursor <= akhir) {
+      const tanggal = isoDate(cursor);
+      const point = byDate.get(tanggal);
+      // Tanggal tanpa upload dibiarkan null supaya garis terputus, bukan
+      // terlihat seperti stok turun mendadak ke nol.
+      data.push({
+        tanggal,
+        label: chartDate(tanggal),
+        adminPct:
+          point?.keterisian_admin == null ? null : point.keterisian_admin * 100,
+        fisikPct:
+          point?.keterisian_fisik == null ? null : point.keterisian_fisik * 100,
+        totalPct:
+          point?.keterisian_total == null ? null : point.keterisian_total * 100,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return data;
   }, [history]);
 
-  const historyYMax = useMemo(() => {
-    if (historyData.length === 0) return 100;
-    const tertinggi = Math.max(
-      ...historyData.map((point) =>
-        Math.max(point.adminPct ?? 0, point.fisikPct ?? 0, point.totalPct ?? 0)
+  const historyAxis = useMemo(() => {
+    const nilai = historyData.flatMap((point) =>
+      [point.adminPct, point.fisikPct, point.totalPct].filter(
+        (value): value is number => value != null
       )
     );
-    return Math.max(100, Math.ceil(tertinggi / 10) * 10);
+    const terendah = nilai.length > 0 ? Math.min(...nilai) : 0;
+    const tertinggi = nilai.length > 0 ? Math.max(...nilai) : 0;
+    const bawah = Math.min(0, Math.floor(terendah / 20) * 20);
+    const atas = Math.max(100, Math.ceil(tertinggi / 20) * 20);
+    const ticks: number[] = [];
+    for (let value = bawah; value <= atas; value += 20) ticks.push(value);
+    return { bawah, atas, ticks };
   }, [historyData]);
 
   const updateSelectedDate = (value: string) => {
@@ -522,19 +548,24 @@ export default function GudangDetailPage() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={historyData}
-                margin={{ top: 10, right: 16, left: -8, bottom: 0 }}
+                margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={24} />
                 <YAxis
                   tick={{ fontSize: 11 }}
-                  domain={[0, historyYMax]}
+                  domain={[historyAxis.bawah, historyAxis.atas]}
+                  ticks={historyAxis.ticks}
                   tickFormatter={(value) => `${value}%`}
-                  width={48}
+                  width={56}
                 />
                 <RechartsTooltip
                   formatter={(value) =>
-                    value == null ? "-" : `${Number(value).toFixed(1)}%`
+                    value == null
+                      ? "-"
+                      : `${Number(value).toLocaleString("id-ID", {
+                          maximumFractionDigits: 1,
+                        })}%`
                   }
                 />
                 <Legend />
@@ -557,7 +588,6 @@ export default function GudangDetailPage() {
                   strokeWidth={2.5}
                   dot={false}
                   activeDot={{ r: 4 }}
-                  connectNulls
                 />
                 <Line
                   type="monotone"
@@ -567,7 +597,6 @@ export default function GudangDetailPage() {
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
-                  connectNulls
                 />
                 <Line
                   type="monotone"
@@ -577,7 +606,6 @@ export default function GudangDetailPage() {
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
-                  connectNulls
                 />
               </LineChart>
             </ResponsiveContainer>
